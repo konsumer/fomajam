@@ -1148,19 +1148,15 @@ static void default_song(void) {
   /* a machine per track (a ROM one if it is built in, else the modelled one after it) */
   static const char *const MACHINE[TRACKS][2] = {{"909", "909"}, {"808", "808"}, {"909", "909"}, {"707", "CR78"}, {"DMX", "808"}, {"SDS", "SDS"}, {"606", "CR78"}, {"ANALOG", "ANALOG"}, {"ANALOG", "ANALOG"}};
   static const uint8_t VOICE[TRACKS] = {0, 5, 9, 15, 2, 6, 9, 69, 33};
-  static const char *const BEAT[3][7] = {
-      {"B...b...B...b...", "....p.......p...", ".c.o.c.o.c.o.c.c", "..t...t...t...t.", "...............s", "", ""},
-      {"B...b...B...b...", "....p.......p..p", ".c.o.c.o.c.o.c.c", "..t...t...t...t.", "......s....s.sSS", "..........L.m.h.", ""},
-      {"B.....b...B.....", "....P.......P...", "", "", "......s.....s...", "", "c.c.c.c.c.c.c.cO"},
-  };
-  static const uint8_t BASS[STEPS] = {33, 33, 45, 33, 33, 36, 33, 45, 33, 33, 43, 33, 31, 33, 45, 40};
-  static const uint8_t LEAD[STEPS] = {69, 69, 72, 69, 76, 76, 74, 72, 69, 69, 72, 69, 79, 77, 76, 74};
+  /* one pattern, as plain as a beat gets: a kick on the beat, a clap on 2 and 4, hats between, a one-note bass */
+  static const char *const BEAT[3] = {"b...b...b...b...", "....p.......p...", "..c...c...c...c."};
+  static const uint8_t BASS[STEPS] = {33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33};
   for (uint32_t i = 0; i < sizeof song; i++) {
     ((uint8_t *)&song)[i] = 0;
   }
   song.version = SONG_VERSION;
-  song.bpm = 122;
-  song.swing = 12;
+  song.bpm = 120;
+  song.swing = 0;
   song.length = 16;
   song.dtime = 3;
   song.dfdbk = 60;
@@ -1171,7 +1167,7 @@ static void default_song(void) {
     d->voice = VOICE[t];
     d->tune = d->decay = d->tone = d->extra = 64;
     d->level = 100;
-    d->send = t == 1 || t == 5 ? 40 : 0;
+    d->send = 0;
     d->slide = 40;
     d->mch = (uint8_t)t; /* MIDI out (when the track is that): its own channel, the usual controllers */
     d->gate = 50;
@@ -1182,26 +1178,19 @@ static void default_song(void) {
       d->cc[k] = CC[k];
     }
   }
-  synth_load(7, 0); /* ANALOG's SAW LEAD */
-  song.track[7].level = 60;
-  song.track[7].send = 60;
-  for (int k = 0; k < synth_presets(machine_engine(song.track[8].machine)); k++) { /* the bass: ANALOG's ACID */
+  synth_load(7, 0); /* track 8: ANALOG's SAW LEAD, ready (no steps) */
+  song.track[7].level = 70;
+  for (int k = 0; k < synth_presets(machine_engine(song.track[8].machine)); k++) { /* track 9: ANALOG's SUB BASS */
     const char *n = synth_preset_name(machine_engine(song.track[8].machine), k);
-    if (n[0] == 'A' && n[1] == 'C' && n[2] == 'I' && n[3] == 'D') {
+    if (n[0] == 'S' && n[1] == 'U' && n[2] == 'B') {
       synth_load(8, k);
     }
   }
-  song.track[8].level = 72;
-  for (int p = 0; p < 3; p++) {
-    pattern_t *pt = &song.pat[p];
-    for (int t = 0; t < 7; t++) {
-      drum_steps(pt, t, BEAT[p][t]);
-    }
-    note_steps(pt, 8, BASS, p == 2 ? "x.x...x.x.x...x." : "x.ax.sx.x.ax.sxx");
-    if (p == 1) {
-      note_steps(pt, 7, LEAD, "x..s.x..x..s.x..");
-    }
+  song.track[8].level = 90;
+  for (int t = 0; t < 3; t++) {
+    drum_steps(&song.pat[0], t, BEAT[t]);
   }
+  note_steps(&song.pat[0], 8, BASS, "x..x..x...x..x..");
 }
 
 static void sanitize(void) {

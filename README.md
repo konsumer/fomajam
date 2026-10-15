@@ -168,7 +168,7 @@ cc -O2 -Isrc -Iplatform -Ibuild/gen -Ivendor/felucca-engines/src -Ivendor/felucc
 build/render --check          # every voice of every machine sounds, stays finite, dies away
 build/render --wav /tmp/kit   # a .wav per machine and voice
 build/render --synths         # every preset of every synth engine sounds, stays finite, dies away
-build/render --song song.wav  # 8 s of the song it starts with (add 2 for pattern 2)
+build/render --song song.wav  # 8 s of the song it starts with (add N for pattern N)
 build/render --midi           # a MIDI track and the clock through a bar: the messages and when
 ```
 
