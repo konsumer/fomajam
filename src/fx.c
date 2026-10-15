@@ -89,7 +89,7 @@ void fx_chorus(const int32_t *in, int32_t *out, uint32_t n) {
     t1 = (t1 < 0 ? -t1 : t1) * 2 - 32768;                                                         /* triangles */
     t2 = (t2 < 0 ? -t2 : t2) * 2 - 32768;
     int32_t base = 529 << 8;
-    out[i] += (tap(base + (t1 * (depth >> 8) >> 15 << 8)) + tap(base + (t2 * (depth >> 8) >> 15 << 8))) >> 1;
+    out[i] += (tap(base + (t1 * (depth >> 8) >> 15) * 256) + tap(base + (t2 * (depth >> 8) >> 15) * 256)) >> 1;
     cpos++;
   }
 }

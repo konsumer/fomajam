@@ -52,6 +52,7 @@ typedef struct {
   uint8_t pump;           /* how fast a ducked track comes back */
   uint8_t filter, reso;   /* the master filter: 0..63 low-pass, 64 off, 65..127 high-pass */
   uint8_t dtype;          /* the distortion's kind (D_*); DRIVE is song.drive */
+  uint8_t ccout;          /* 1: parameters changed here are sent out as MIDI CC (CC.md) */
 } song_t;
 
 _Static_assert(sizeof(song_t) <= SETTINGS_MAX, "the song must fit in the settings");
@@ -65,6 +66,9 @@ extern volatile uint8_t cur_pattern;   /* the pattern playing (song.pattern take
 extern volatile int8_t play_step;      /* -1: stopped */
 extern volatile uint16_t hits[TRACKS]; /* counts each sound started, for the screen */
 extern volatile uint8_t cpu_load, cpu_peak; /* how much of each block's time audio() used, in % (FM-1 only) */
+#define SCOPE_LEN 1024
+extern int16_t scope[SCOPE_LEN];   /* the last of the output, for the screen's oscilloscope */
+extern volatile uint32_t scope_at; /* where the next frame goes (it only counts up) */
 
 void engine_tempo(void);             /* after bpm, swing or delay time change */
 void live_on(int t, int v, int vel); /* play track t now: a drum voice, or a synth note (held) */

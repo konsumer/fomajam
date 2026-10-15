@@ -32,13 +32,14 @@ bar**. The knob bar shows what KNOB1–4 do on the current page, always in the s
 | `ENV`       | Clear the pattern. It asks first: `OCT+` clears, `OCT-` cancels.                     |
 | `OCT-/OCT+` | Change the keyboard's octave. When a question is shown, `OCT+` is yes, `OCT-` is no. |
 
-| Button | Page    | Keys                                            | Knobs                                                                         |
-| ------ | ------- | ----------------------------------------------- | ----------------------------------------------------------------------------- |
-| `SEQ`  | PATTERN | white keys: the 16 steps; black keys: tracks    | STEP, VOICE (or NOTE), ACCENT, MACHINE                                        |
-| `EDIT` | SOUND   | play the track                                  | the track's sound (see [Machines](#machines))                                 |
-| `HOME` | MIX     | white keys: mute tracks 1–9; black keys: tracks | LEVEL, DELAY, REVERB, MUTE                                                    |
-| `FX`   | FX      | play the track                                  | 4 pages (press `SEL`): see [Effects](#effects)                                |
-| `GLO`  | GLOBAL  | play the track                                  | TEMPO page: BPM, SWING, LENGTH, THEME; MIDI page: CLOCK. Also shows CPU load. |
+| Button       | Page                | Keys                                            | Knobs                                                                                                                   |
+| ------------ | ------------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `SEQ`        | PATTERN             | white keys: the 16 steps; black keys: tracks    | STEP, VOICE (or NOTE), ACCENT, MACHINE                                                                                  |
+| `EDIT`       | SOUND               | play the track                                  | the track's sound (see [Machines](#machines))                                                                           |
+| `HOME`       | MIX                 | white keys: mute tracks 1–9; black keys: tracks | LEVEL, DELAY, REVERB, MUTE                                                                                              |
+| `HOME` again | SCOPE, then MIDI IN | play the track                                  | the MIX knobs. SCOPE shows the output; MIDI IN lists the last messages that came in. `HOME` once more goes back to MIX. |
+| `FX`         | FX                  | play the track                                  | 4 pages (press `SEL`): see [Effects](#effects)                                                                          |
+| `GLO`        | GLOBAL              | play the track                                  | TEMPO page: BPM, SWING, LENGTH, THEME; MIDI page: CLOCK, CC OUT. Also shows CPU load.                                   |
 
 **Playing the keys:** on a synth track, the keys are a keyboard. On a drum track, they play the machine's kit: the
 white keys are BD SD CH OH CP RS LT MT HT CY RD CB TB MA CL TI, and the black keys are BD2 SD2 CB2 and the congas. (On
@@ -152,6 +153,10 @@ but don't fit; to include one, move it higher in the list. See [LICENSING.md](LI
 **MIDI in:** each track has its own channel. Channels 1–9 play tracks 1–9, whatever machine they use, so a keyboard
 can play any of them. Channel 10 plays the selected track. Drum machines respond to General MIDI drum notes; synths
 respond to any note.
+
+**MIDI controllers:** every parameter also has a fixed MIDI CC, on the same channels (channel 16 is the song and
+effects), so a controller with lots of knobs reaches everything without menus. See [CC.md](CC.md) for the map. With
+`CC OUT` on (GLOBAL page, MIDI page), changes made on the FM-1 are sent back out so a controller's lights follow.
 
 **MIDI out** is a machine (MIDI, shown as `MID` on the grid). Its steps are sent over USB MIDI instead of making a
 sound:

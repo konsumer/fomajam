@@ -13,6 +13,8 @@ volatile uint8_t cur_pattern;
 volatile int8_t play_step = -1;
 volatile uint16_t hits[TRACKS];
 volatile uint8_t cpu_load, cpu_peak;
+int16_t scope[SCOPE_LEN];
+volatile uint32_t scope_at;
 
 static volatile uint32_t len_even = 5512, len_odd = 5512, dlen = 11025; /* in frames, from engine_tempo() */
 
@@ -319,7 +321,9 @@ void audio(int32_t *out, uint32_t frames) {
     int32_t y = v - (int32_t)((((((int64_t)v * v) >> 15) * v >> 15) * 4855) >> 15); /* soft clip */
     out[2 * i] += y;
     out[2 * i + 1] += y;
+    scope[(scope_at + i) & (SCOPE_LEN - 1)] = (int16_t)clamp(y, -32767, 32767);
   }
+  scope_at += frames;
   /* how long that took, of the time the block lasts (22.676 us a frame): smoothed, and the peak held a while */
   uint32_t load = (micros() - t0) * 100u * 256u / (frames * 22676u / 1000u + 1u);
   avg += ((int32_t)load - (int32_t)avg) >> 4;
