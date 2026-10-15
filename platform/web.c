@@ -137,7 +137,7 @@ void midi_send(uint8_t status, uint8_t d1, uint8_t d2) {
 }
 
 /* ---- settings: the page keeps them (localStorage) and gives them back before boot */
-static uint8_t store[256];
+static uint8_t store[SETTINGS_MAX];
 static int32_t store_len = -1;
 static uint32_t store_gen;
 EXPORT(web_store)
@@ -145,7 +145,7 @@ uint8_t *web_store(void) { return store; }
 EXPORT(web_store_len)
 int32_t web_store_len(void) { return store_len; }
 EXPORT(web_store_set_len)
-void web_store_set_len(int32_t n) { store_len = n > 256 ? 256 : n; }
+void web_store_set_len(int32_t n) { store_len = n > (int32_t)SETTINGS_MAX ? (int32_t)SETTINGS_MAX : n; }
 EXPORT(web_store_gen)
 uint32_t web_store_gen(void) { return store_gen; }
 int settings_load(void *p, uint32_t n) {

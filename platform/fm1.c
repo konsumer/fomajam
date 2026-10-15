@@ -147,10 +147,11 @@ static uint32_t crc32(const uint8_t *p, uint32_t n) {
   }
   return ~c;
 }
+static uint8_t settings_buf[SETTINGS_MAX]; /* the flash driver wants RAM */
 int settings_load(void *p, uint32_t n) {
-  static uint8_t buf[256];
+  uint8_t *buf = settings_buf;
   uint32_t h[3];
-  if (!flash_ok || n > sizeof buf || st_read(SETTINGS_AT, h, sizeof h) || h[0] != SETTINGS_MAGIC || h[1] != n) {
+  if (!flash_ok || n > SETTINGS_MAX || st_read(SETTINGS_AT, h, sizeof h) || h[0] != SETTINGS_MAGIC || h[1] != n) {
     return -1;
   }
   if (st_read(SETTINGS_AT + sizeof h, buf, n) || crc32(buf, n) != h[2]) {
@@ -160,10 +161,10 @@ int settings_load(void *p, uint32_t n) {
   return 0;
 }
 int settings_save(const void *p, uint32_t n) {
-  static uint8_t buf[256]; /* the flash driver wants RAM */
+  uint8_t *buf = settings_buf;
   uint32_t h[3] = {SETTINGS_MAGIC, n, 0}, took;
   int rc;
-  if (!flash_ok || n > sizeof buf) {
+  if (!flash_ok || n > SETTINGS_MAX) {
     return -1;
   }
   memcpy(buf, p, n);

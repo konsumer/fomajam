@@ -33,9 +33,12 @@ OUT = ROOT / "build"
 FW = OUT / "fm1"
 LDR = OUT / "loader"
 SITE = OUT / "web"
+SAMPLES = ROOT / "samples"
 sys.path.insert(0, str(ROOT / "tools"))
 import fm1pkg_make  # noqa: E402
 import lz4blk  # noqa: E402
+import roms  # noqa: E402
+import samples  # noqa: E402
 
 TC = Path(os.environ.get("JIELI_TOOLCHAIN", "/opt/jieli/toolchain"))
 APP_XIP = 0x02000120  # app.bin offset 0 in the XIP map; the SPL jumps here
@@ -43,7 +46,7 @@ APP_SLOT = fm1pkg_make.APP_SLOT
 LOADER_LOAD = 0x01C0A800
 LOADER_NAME = b"usb_hid_ota.bin"  # the file name the SPL looks for
 CFLAGS = ["-Os", "-ffunction-sections", "-fno-builtin", "-Wall", "-Wno-unused-function"]
-INCLUDES = ["-Iplatform", "-Iplatform/hal", "-Iplatform/src", "-Iplatform/gen"]
+INCLUDES = ["-Iplatform", "-Iplatform/hal", "-Iplatform/src", "-Iplatform/gen", "-Ibuild/gen", "-Ivendor/felucca-engines/src", "-Ivendor/felucca"]
 LINE = re.compile(r"^\s*([0-9a-f]+):\s+((?:[0-9a-f]{2} )+)\s*\t(.*)$")
 
 
@@ -370,6 +373,16 @@ def build():
     info.update(name=cfg["name"], version=cfg["version"], identity=cfg["product"])
     build_site()
     try:
+      n, size = samples.generate(SAMPLES, OUT / "gen" / "samples.h")
+    except ValueError as e:
+      raise BuildError(str(e))
+    log.append(f"samples   {n} from samples/, {size // 1024} KiB")
+    fe = OUT / "gen" / "fe_tables.h"  # the Felucca engines' tables (vendor/felucca-engines)
+    if not fe.exists():
+      run([sys.executable, "vendor/felucca-engines/tools/gen_engine_tables.py", rel(fe)])
+    names, size = roms.generate(ROOT / "roms", OUT / "gen" / "roms.h")
+    log.append(f"roms      {' '.join(names) or 'none (offline?)'}, {size // 1024} KiB")
+    try:
       n = build_wasm(cfg)
       info["wasm"] = True
       log.append(f"emulator  build/web/firmware.wasm  {n // 1024} KiB")
@@ -406,7 +419,7 @@ class Quiet(SimpleHTTPRequestHandler):
 
 
 def snapshot():
-  files = [ROOT / "firmware.json", *SRC.rglob("*"), *PLAT.rglob("*"), *WEB.rglob("*")]
+  files = [ROOT / "firmware.json", *SRC.rglob("*"), *PLAT.rglob("*"), *WEB.rglob("*"), *SAMPLES.rglob("*"), *(ROOT / "vendor").rglob("*")]
   return {str(f): f.stat().st_mtime for f in files if f.is_file()}
 
 
