@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""The ROM drum machines: recordings of their own samples -> build/gen/roms.h (4-bit IMA ADPCM).
+"""The ROM drum machines: recordings of their own samples, converted to build/gen/roms.h (4-bit IMA ADPCM).
 
-The build runs this. The recordings come from tidal-drum-machines, pinned to a commit, one file at
-a time, and are kept in roms/ (not in git); without a network the build goes on without them.
-They are not ours and that repository states no license for them: see LICENSING.md.
+The build runs this. It downloads the recordings from tidal-drum-machines (pinned to one commit), one file at a
+time, and keeps them in roms/ (which is not in git). Without a network connection, the build continues without
+them. The recordings are not ours, and that repository doesn't state a license for them; see LICENSING.md.
 
-MACHINES below is what goes in, in order, until BUDGET is spent; the build says which were left out.
-Move a machine up to have it, or raise BUDGET while the FM-1 build still fits (it says how full it is).
-The voice names are tools/drums.py's.
+Machines in MACHINES below are added in order until BUDGET is used up, and the build lists the ones left out.
+To include one, move it higher in the list, or raise BUDGET as long as the FM-1 build still fits (the build
+reports how full it is). The voice names are the ones in tools/drums.py.
 """
 
 import hashlib

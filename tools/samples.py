@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""samples/*.wav -> build/gen/samples.h: 16-bit mono at 22050 Hz, kept in flash.
+"""Convert samples/*.wav to build/gen/samples.h: 16-bit mono at 22050 Hz, stored in flash.
 
-The build runs this by itself; drop a .wav in samples/ and it is in the next build. Any PCM .wav
-works (8/16/24/32-bit, mono or stereo, any rate). The name on the screen is the file name, in
-capitals, cut to 6 characters: name the files short (01-kick.wav sorts first, shows KICK).
+The build runs this automatically, so a .wav dropped into samples/ is in the next build. Any PCM .wav works
+(8, 16, 24 or 32-bit, mono or stereo, any sample rate). The name shown on screen is the file name in capitals,
+cut to 6 characters, so keep names short (01-kick.wav sorts first and shows as KICK).
 """
 
 import re

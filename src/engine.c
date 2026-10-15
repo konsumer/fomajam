@@ -1,9 +1,10 @@
-/* FOMAJAM's sound: the step clock, MIDI out, the delay and the output. The drum machines are in
- * drums.c, the synth engines in synths.c. It all runs in blocks of 32 frames (Felucca's), steps
- * starting on a block: integers only, no screen, no flash.
+/* FOMAJAM's sound: the step sequencer, MIDI out, the delay and the output. The drum machines are in drums.c
+ * and the synth engines in synths.c. Everything runs in 32-frame blocks (as Felucca's engines do), and steps
+ * start on a block boundary. This code runs in audio(): integers only, no screen, no flash.
  *
- * audio() is the one sender of MIDI (the USB queue has one writer): a MIDI track's notes and their
- * note-offs, the clock, and what loop() asks for (midi_out: controllers, programs, notes played). */
+ * audio() is the only place that sends MIDI, because the USB queue allows only one writer. It sends MIDI
+ * tracks' notes and note-offs, the clock, and whatever loop() queues with midi_out() (controllers, program
+ * changes, notes played live). */
 #include "groove.h"
 
 song_t song;
@@ -23,7 +24,7 @@ static int clamp(int v, int lo, int hi) {
 static int is_engine(int t) { return machine_engine(song.track[t].machine) >= 0; }
 static int is_midi(int t) { return machine_midi(song.track[t].machine); }
 
-/* ---- what loop() asks for: loop() queues, audio() does it */
+/* ---- requests from loop(): loop() queues them, audio() carries them out */
 enum { EV_ON,
        EV_OFF,
        EV_MIDI };
@@ -93,13 +94,13 @@ void engine_tempo(void) {
   dlen = d >= 44100 ? 44099 : d;
 }
 
-/* ---- ratchets: a step's repeats, the rest of its length apart */
+/* ---- ratchets: a step's repeats, spread evenly across the step */
 static struct {
   uint8_t left, val, vel;
   int32_t every, next;
 } rat[TRACKS];
 
-static void hit(int t, int val, int vel, int slide_in, int32_t gate) { /* a step's sound, on whatever the track is */
+static void hit(int t, int val, int vel, int slide_in, int32_t gate) { /* play a step on whatever machine the track has */
   if (is_midi(t)) {
     m_note_on(t, val, vel, slide_in, gate);
   } else if (machine_synth(song.track[t].machine)) {
@@ -125,7 +126,7 @@ static void rat_tick(uint32_t n) {
 
 static int32_t ctr;             /* frames to the next step */
 static uint32_t step_frames;    /* the step playing's length */
-static uint32_t clk_acc, clk_n; /* MIDI clock: 6 a 16th, the first on the step */
+static uint32_t clk_acc, clk_n; /* MIDI clock: 6 ticks per 16th note, the first on the step */
 
 static void next_step(void) {
   int len = song.length < 1 ? 1 : song.length > STEPS ? STEPS
@@ -169,10 +170,10 @@ static void next_step(void) {
                                          : (int32_t)(step_len * (d->gate ? d->gate : 1) / 100u);
     hit(t, p->val[t][s], vel, slide_in, gate);
   }
-  ctr += (int32_t)step_len; /* (what the last step ran over its block is taken off this one) */
+  ctr += (int32_t)step_len; /* (any overshoot from the last step is taken off this one, so the tempo stays exact) */
 }
 
-static void clock_tick(uint32_t n) { /* the step's other five clocks, where they fall */
+static void clock_tick(uint32_t n) { /* send the step's other five clock ticks when they are due */
   if (!song.clock || clk_n >= 6) {
     return;
   }

@@ -1,13 +1,13 @@
-/* FOMAJAM's colour themes: one per FM-1 finish (as the shops list them: black, grey, blue, green, dark green,
- * purple, red, orange; teal from owners), and two spares. Add one here and it is on the GLOBAL page.
+/* FOMAJAM's color themes: one for each FM-1 color that stores list (black, grey, blue, green, dark green,
+ * purple, red, orange; owners also mention teal), plus two extras. A theme added here appears on the GLOBAL page.
  *
- *   bg, panel   the screen, the header and knob bar
+ *   bg, panel   the screen background; the header and knob bar
  *   off, beat   an empty step; an empty step on a beat (1, 5, 9, 13)
- *   text, dim   values; what is switched off or muted
- *   accent      the page name, the playhead
- *   knob[4]     KNOB1..4: the same colour on every page
- *   track[9]    tracks 1..9 (and a synth's steps); the first 8 also colour drum voices: kick, snare, clap,
- *               closed hat, open hat and cymbals, low toms, high toms, bells */
+ *   text, dim   values; anything switched off or muted
+ *   accent      the page name and the playhead
+ *   knob[4]     KNOB1-4, the same color on every page
+ *   track[9]    tracks 1-9 (also a synth's steps); the first 8 also color the drum voices: kick, snare, clap,
+ *               closed hi-hat, open hi-hat and cymbals, low toms, high toms, bells */
 #ifndef THEMES_H
 #define THEMES_H
 #include "groove.h"
@@ -21,7 +21,7 @@ typedef struct {
   uint16_t track[TRACKS];
 } theme_t;
 
-/* the steps' and tracks' colours, shared by the finish themes (a pattern reads the same in any of them);
+/* the steps' and tracks' colors, shared by the finish themes (a pattern reads the same in any of them);
  * ORANGE, TEAL, WHITE and NEON have their own */
 #define RAINBOW \
   {HEX(0xff4d4d), HEX(0xff8c1a), HEX(0xffd21f), HEX(0x9be33a), HEX(0x2ed39a), HEX(0x22c3e6), HEX(0x4d8bff), HEX(0xa36bff), HEX(0xff5cc8)}

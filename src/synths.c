@@ -1,15 +1,15 @@
-/* FOMAJAM's synth engines: Felucca's (vendor/), hosted. Each track whose machine is one of them gets two
- * voices with an ADSR, the envelope's sweep of the filter, accent, glide and MONO, rendered a block (CTL,
- * 32 frames) at a time as Felucca does; at most MAXV voices sound over all the tracks (Felucca's own budget
- * on this chip), the oldest giving way.
+/* FOMAJAM's synth engines: a host for Felucca's engines (in vendor/) and our own. Each track that uses one
+ * gets two voices with an ADSR envelope, an envelope sweep of the filter, accent, glide and mono mode, all
+ * rendered in 32-frame blocks as Felucca does. At most MAXV voices play across all tracks (Felucca's own
+ * limit on this chip); when there are more, the oldest gives way.
  *
- *   ANALOG LOFI TRIO WHEEL NOISE   Felucca-Engines (MIT)
- *   PHASE VOICE PHYS               Felucca (GPL-3.0-only)
+ *   ANALOG LOFI TRIO WHEEL NOISE   from Felucca-Engines (MIT)
+ *   PHASE VOICE PHYS               from Felucca (GPL-3.0-only)
  *   STRING                         ours: Karplus-Strong (eng_string.h)
  *   SUPERSAW                       ours: the JP-8000's, after Szabo (eng_supersaw.h)
  *
- * The engines read their parameters from Felucca's track (p[]): it is filled from song.track every block.
- * Runs in audio(), but for the synth_* calls the screen uses. */
+ * The engines read their parameters from Felucca's track struct (p[]), which is filled from song.track every
+ * block. This code runs in audio(), except the synth_* functions, which the screen uses. */
 #define track_t song_track_t /* ours is a song's track; Felucca's is its own */
 #include "groove.h"
 #undef track_t
@@ -42,7 +42,7 @@ typedef struct track {
 } track_t;
 static track_t trk[NPART];
 
-/* what PHYS needs of a host: a region of memory a track, a random number */
+/* what PHYS needs from its host: a block of memory per track, and random numbers */
 #define PHYS_POLY NVOICE
 #define ENG_MEM_PART 8600u
 #define ENG_MEM_FITS(name, size) _Static_assert((size) <= ENG_MEM_PART, name " state over ENG_MEM_PART")
@@ -87,7 +87,7 @@ static void params(track_t *T, const song_track_t *s) { /* song.track -> Felucca
 }
 
 void synth_param(int t, int k, synth_param_t *out) {
-  static track_t ui; /* the engine's descriptor can depend on the track's other parameters (its mode) */
+  static track_t ui; /* an engine's parameter names can depend on its other parameters (its mode) */
   const engine_t *E = ENGINES[machine_engine(song.track[t].machine)];
   const param_desc_t *d = 0;
   params(&ui, &song.track[t]);
@@ -165,7 +165,7 @@ static void voice_on(track_t *T, const engine_t *E, voice_t *v, int note, int ve
   }
 }
 
-static void make_room(void) { /* over MAXV sounding: the oldest gives way, fading over a block */
+static void make_room(void) { /* when MAXV voices are playing, the oldest fades out over one block */
   int n = 0;
   voice_t *old = 0;
   for (int t = 0; t < NPART; t++) {
@@ -196,7 +196,7 @@ void synths_note(int t, int note, int vel, int slide, int32_t gate) {
   const song_track_t *s = &song.track[t];
   int e = machine_engine(s->machine);
   if (e < 0 || cur[t] != e) {
-    return; /* (its first block sets it up) */
+    return; /* (the track's first block sets the engine up) */
   }
   const engine_t *E = ENGINES[e];
   track_t *T = &trk[t];

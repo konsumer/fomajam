@@ -1,12 +1,14 @@
-/* STRING: a plucked string (Karplus-Strong), in the form of Felucca's engines (felucca_engine.h).
- * Included by synths.c (an engine, not a file of its own: hence .h).
+/* STRING: a plucked string (Karplus-Strong), written in the same form as Felucca's engines (felucca_engine.h).
+ * It is included by synths.c rather than compiled on its own, hence the .h.
  *
- * A note fills a delay line one period long with a burst (noise, a pick's ramp or a soft bump), coloured by BRIT
- * and by where it is plucked (POS: a comb, as a real string's node). Each pass round the loop averages two
- * neighbours and goes through a one-pole low-pass (DAMP, darker for higher notes by KTR) and loses a little
- * (DCAY): the string dies away, its highs first. BOW keeps feeding it noise (a bowed or blown string), DRV drives
- * the output. The period follows the pitch every block (glide and bends), its filters' delay taken off it.
- * Its two voices' lines live in the track's engine memory (ENG_MEM, shared with PHYS: one engine at a time). */
+ * A note fills a delay line, one period long, with a short burst: noise, a pick's ramp or a soft bump. BRIT
+ * filters the burst, and POS shapes it like plucking a real string at a point along its length. Each pass
+ * around the loop averages neighboring samples, goes through a one-pole low-pass (DAMP, which KTR makes darker
+ * for higher notes) and loses a little level (DCAY), so the string dies away with its highs fading first. BOW
+ * keeps feeding in noise (a bowed or blown string), and DRV drives the output. The period follows the pitch
+ * every block (for glides and bends), minus the delay of the loop's filters, which keeps it in tune.
+ * The two voices' delay lines live in the track's engine memory (ENG_MEM, shared with PHYS, since a track
+ * only plays one engine at a time). */
 #define STRING_LEN 2048 /* samples: down to ~21.5 Hz */
 #define STRING_MASK (STRING_LEN - 1)
 ENG_MEM_FITS("STRING", sizeof(int16_t) * STRING_LEN * NVOICE);

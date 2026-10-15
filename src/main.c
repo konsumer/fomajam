@@ -1,21 +1,22 @@
-/* FOMAJAM: a groovebox. 9 tracks, each its own machine: a drum machine (808, 909, 707, DMX ...) with
- * a voice per step, or a synth engine (ANALOG, LOFI, ... Felucca's) with a note per step; 8 patterns of 16 steps.
+/* FOMAJAM: a groovebox. It has 9 tracks; each plays its own machine, either a drum machine (808, 909, 707,
+ * DMX, ...) with a voice per step, or a synth engine (ANALOG, SUPERSAW, ...) or MIDI out with a note per step.
+ * There are 8 patterns of 16 steps.
  *
- * Every page has the same three parts: the header (page, track, pattern, tempo), the body, and the
- * knob bar: KNOB1..4 always sit under the screen in the same four colours, named for what they do here.
+ * This file is the user interface. Every page has the same three parts: a header (page, track, pattern,
+ * tempo), the body, and a knob bar that shows what KNOB1-4 do on that page, always in the same four colors.
  *
- *   SEQ        PATTERN  white keys = steps, black keys = tracks
- *   EDIT       SOUND    the track's sound (SEL: the second page of knobs); keys play
- *   HOME       MIX      levels; white keys = mutes, black keys = tracks
- *   FX         FX       the delay and the drive; keys play
- *   GLO        GLOBAL   tempo, swing, length, theme; keys play
- *   SELECT     the track          PRESETS    the pattern (changes at the end of the bar)
- *   ALGORITHM  the tempo          PLAY / REC / SAVE / OCT- OCT+
- *   SEL        the next page of knobs; on PATTERN with a synth: SLIDE on the cursor's step (lit when it slides)
- *   ENV        clear the pattern? OCT+ yes, OCT- no (OCT- / OCT+ answer every question)
- *   ARP        on PATTERN: the cursor's step's ratchet, x1 x2 x3 x4 x6 x8 (lit when it has one)
+ *   SEQ        PATTERN  white keys are steps, black keys pick tracks
+ *   EDIT       SOUND    the track's sound (SEL shows the next page of knobs); the keys play
+ *   HOME       MIX      levels; white keys mute tracks, black keys pick tracks
+ *   FX         FX       the delay and the drive; the keys play
+ *   GLO        GLOBAL   tempo, swing, length, theme, MIDI clock; the keys play
+ *   SELECT     picks the track        PRESETS    picks the pattern (it changes at the end of the bar)
+ *   ALGORITHM  sets the tempo         PLAY / REC / SAVE / OCT- OCT+
+ *   SEL        the next page of knobs; on PATTERN with a synth, toggles slide on the cursor's step
+ *   ENV        clears the pattern after asking (OCT+ answers yes, OCT- no, for every question)
+ *   ARP        on PATTERN, sets the cursor's step's ratchet: x1 x2 x3 x4 x6 x8
  *
- * The sound is in engine.c, the colours in themes.h. */
+ * The sound is in engine.c, drums.c and synths.c; the colors are in themes.h. */
 #include "groove.h"
 #include "themes.h"
 
@@ -623,7 +624,7 @@ static void draw_label(int t) {
   text_center(x, w, y, track_short(t), lit ? th->bg : tcolor(t), FONT_SMALL);
 }
 
-/* a drum step is coloured by its voice (kicks like the first track's colour, snares the second's ...);
+/* a drum step is colored by its voice (kicks like the first track's color, snares the second's ...);
  * a synth's by its track */
 static uint16_t voice_color(int t, int v) {
   static const uint8_t FAMILY[22] = {0, 0, 1, 1, 2, 2, 5, 5, 6, 3, 4, 4, 4, 7, 7, 3, 5, 5, 6, 6, 3, 2};
@@ -798,7 +799,7 @@ static void draw_global(void) {
   format_int(s, song.bpm);
   text(8, 30, s, th->accent, FONT_BIG);
   text(8 + text_width(s, FONT_BIG) + 6, 46, "BPM", th->dim, FONT_SMALL);
-  /* the theme: the screen is already in it (turning THEME recolours everything), so its name and colours */
+  /* the theme: the screen is already in it (turning THEME recolors everything), so its name and colors */
   text(8, 84, "THEME", th->dim, FONT_SMALL);
   text(8, 100, th->name, th->accent, FONT_BIG);
   for (int k = 0; k < TRACKS; k++) {
@@ -1145,7 +1146,7 @@ static void note_steps(pattern_t *p, int t, const uint8_t *notes, const char *s)
 }
 
 static void default_song(void) {
-  /* a machine per track (a ROM one if it is built in, else the modelled one after it) */
+  /* a machine per track (a ROM one if it is built in, else the modeled one after it) */
   static const char *const MACHINE[TRACKS][2] = {{"909", "909"}, {"808", "808"}, {"909", "909"}, {"707", "CR78"}, {"DMX", "808"}, {"SDS", "SDS"}, {"606", "CR78"}, {"ANALOG", "ANALOG"}, {"ANALOG", "ANALOG"}};
   static const uint8_t VOICE[TRACKS] = {0, 5, 9, 15, 2, 6, 9, 69, 33};
   /* one pattern, as plain as a beat gets: a kick on the beat, a clap on 2 and 4, hats between, a one-note bass */

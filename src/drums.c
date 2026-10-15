@@ -1,12 +1,12 @@
-/* FOMAJAM's drum machines. Each track plays one machine; each step picks one of its voices.
+/* FOMAJAM's drum machines. Each track plays one machine, and each step plays one of its voices.
  *
- *   modelled  808, 909, SDS, CR78: voices built from a few kinds (tools/drums.py, from trommelsynthesizer)
- *   ROM       recordings of the machines' own samples (tools/roms.py), 4-bit IMA ADPCM
- *   SMP       the .wav files in samples/ (tools/samples.py), a voice per file
- *   ANALOG ...  then the synth engines (synths.c): not drum machines, their voices are notes
+ *   modeled   808, 909, SDS, CR78: voices built from a few voice types (tools/drums.py, from trommelsynthesizer)
+ *   ROM       recordings of the machines' own samples (tools/roms.py), stored as 4-bit IMA ADPCM
+ *   SMP       the .wav files in samples/ (tools/samples.py), one voice per file
+ *   ANALOG .. after these come the synth engines (synths.c); they are not drum machines, and their voices are notes
  *
- * A track has two voices sounding at once, so a hat over a ringing kick does not cut it; a closed
- * hat chokes an open one on the same track. Runs in audio(): integers only. */
+ * A track can play two voices at once, so a hi-hat over a ringing kick doesn't cut it off. A closed hi-hat
+ * does cut off an open one on the same track. This code runs in audio(): integers only. */
 #include "drums.h"
 
 #include "gains.h"

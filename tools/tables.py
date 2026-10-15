@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Write src/tables.h: the curves the engine needs, worked out here because the chip has no floats.
+"""Write src/tables.h: lookup tables the engine needs, calculated here because the chip has no floating point.
 
 python3 tools/tables.py
 """

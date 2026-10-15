@@ -1,4 +1,4 @@
-/* FOMAJAM: what the screen side (main.c) and the sound side (engine.c, drums.c) share. */
+/* FOMAJAM: what the screen (main.c) and the sound (engine.c, drums.c, synths.c) share. */
 #ifndef GROOVE_H
 #define GROOVE_H
 #include "fm1.h"
@@ -57,14 +57,14 @@ extern volatile uint8_t playing;
 extern volatile uint8_t cur_pattern;   /* the pattern playing (song.pattern takes over at the next bar) */
 extern volatile int8_t play_step;      /* -1: stopped */
 extern volatile uint16_t hits[TRACKS]; /* counts each sound started, for the screen */
-extern volatile uint8_t cpu_load, cpu_peak; /* % of the time a block of sound has that audio() took (FM-1 only) */
+extern volatile uint8_t cpu_load, cpu_peak; /* how much of each block's time audio() used, in % (FM-1 only) */
 
 void engine_tempo(void);             /* after bpm, swing or delay time change */
 void live_on(int t, int v, int vel); /* play track t now: a drum voice, or a synth note (held) */
 void live_off(int t, int v);         /* let a synth note go */
 void midi_out(int status, int d1, int d2); /* a message out over USB MIDI, sent by audio() (its only sender) */
 
-/* ---- the machines: the modelled drums, the ROM drums, SMP (samples/) if there are any, the synth engines */
+/* ---- the machines: the modeled drums, the ROM drums, SMP (samples/) if there are any, the synth engines */
 int machine_count(void);
 const char *machine_name(int m);
 int machine_find(const char *name, int otherwise);
@@ -73,7 +73,7 @@ int machine_engine(int m);     /* the synth engine (synths.c) it is, or -1 */
 int machine_midi(int m);       /* 1: MIDI out (its voices are notes, sent, not heard) */
 const char *machine_label(int m); /* 3 characters, for the grid */
 int machine_voices(int m);     /* how many voice numbers it has (22, the samples, or 128 notes) */
-int machine_has(int m, int v); /* 1: its own voice; 2: played by a neighbour; 0: silent */
+int machine_has(int m, int v); /* 1: its own voice; 2: played by a neighbor; 0: silent */
 const char *voice_name(int m, int v);
 void drum_envelope(int t, int v, uint8_t *h, int n); /* the loudness over 1 s in n columns, 0..255 */
 
@@ -91,7 +91,7 @@ enum { SF_NUM,
 int synth_count(void);
 const char *synth_name(int e);
 const char *synth_label(int e);
-const char *synth_page(int e, int page); /* the titles of its two pages of parameters */
+const char *synth_page(int e, int page); /* the titles of the engine's two pages of parameters */
 void synth_param(int t, int k, synth_param_t *out); /* parameter k of track t's engine, as it has it set */
 int synth_presets(int e);
 const char *synth_preset_name(int e, int p);

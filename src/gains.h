@@ -1,4 +1,4 @@
-/* made by test/render.c --calibrate: do not edit. Each modelled voice's gain, Q15, so that at the
+/* made by test/render.c --calibrate: do not edit. Each modeled voice's gain, Q15, so that at the
  * default knobs it peaks at TARGET (drums.h) */
 #ifndef GAINS_H
 #define GAINS_H

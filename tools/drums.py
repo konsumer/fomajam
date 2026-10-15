@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Write src/drums.h: the drum machines as integers (the chip has no floats).
+"""Write src/drums.h: the drum machines as integer tables (the chip has no floating point).
 
   python3 tools/drums.py
 
-The modelled machines (808, 909, SDS-V, CR-78) and the voice list come from trommelsynthesizer
-(poketrack, zlib, by the same author): each voice is one of a few kinds (swept sine, snare, metallic,
-ping, clap, noise) with a handful of constants. Here every time becomes an index into TAU (a
-per-frame decay), every filter frequency an index into FREQ (a semitone grid from 20 Hz), and every
-amount a Q12 number, so the engine only multiplies and shifts.
+The modeled machines (808, 909, SDS-V, CR-78) and the list of voices come from trommelsynthesizer (in poketrack,
+zlib license, by the same author). Each voice is one of a few types (swept sine, snare, metallic, ping, clap,
+noise) with a handful of constants. This script turns every time into an index into TAU (a per-frame decay),
+every filter frequency into an index into FREQ (a semitone grid starting at 20 Hz), and every amount into a Q12
+number, so the engine only needs to multiply and shift.
 """
 
 import math
@@ -45,7 +45,7 @@ TARGET = {
   "CL": 0.5,
 }
 
-# a voice a machine lacks plays its nearest neighbour, retuned (semitones)
+# a voice a machine lacks plays its nearest neighbor, retuned (semitones)
 FALLBACK = {
   "BD2": [("BD", 0)],
   "SD2": [("SD", 2)],

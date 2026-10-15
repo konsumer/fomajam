@@ -1,16 +1,17 @@
-/* SUPERSAW: the Roland JP-8000's super saw, in the form of Felucca's engines (felucca_engine.h), and what a
- * witch house pad wants of it. Included by synths.c (an engine, not a file of its own: hence .h).
+/* SUPERSAW: the Roland JP-8000's super saw, written in the same form as Felucca's engines (felucca_engine.h),
+ * with extra controls for dark, witch-house pads. It is included by synths.c rather than compiled on its own,
+ * hence the .h.
  *
- * After Adam Szabo, "How to Emulate the Super Saw" (2010), who measured the JP-8000:
- *   - seven band-limited saws, detuned by fixed ratios (SS_OFFSET) times a curve of DETN that creeps for most
- *     of its travel and then flares (SS_DETUNE: his fit of the hardware);
- *   - their phases free-running, random as a note starts: no two notes alike, no flam of seven in step;
- *   - MIX trades the centre saw (SS_CENTER) against the six around it (SS_SIDE);
- *   - a high-pass at the note's fundamental (HPF 64), which takes away the rumble the detuning leaves below it.
- * Then a resonant low-pass (CUT RES, the envelope's sweep from the host), and for the dark and the worn:
- * DRFT, a slow wander of the pitch (a tape's wow, each voice its own), and CRSH, fewer bits and a lower rate.
- * VOIC: how many of the seven (1: one saw; the centre first, then pairs outwards).
- * Each voice's state lives in the track's engine memory (ENG_MEM: one engine at a time). */
+ * Based on Adam Szabo's measurements of the JP-8000 ("How to Emulate the Super Saw", 2010):
+ *   - seven band-limited saws, detuned by fixed ratios (SS_OFFSET) scaled by a DETN curve that rises slowly for
+ *     most of the knob's travel and then steeply (SS_DETUNE, his fit to the hardware);
+ *   - free-running phases, randomized when a note starts, so no two notes sound the same and there is no flam;
+ *   - MIX balances the center saw (SS_CENTER) against the six around it (SS_SIDE);
+ *   - a high-pass at the note's fundamental (HPF 64), which removes the rumble the detuning leaves below it.
+ * After those comes a resonant low-pass (CUT, RES, plus the envelope sweep from the host). For the dark, worn
+ * sound: DRFT is a slow, random pitch wander (like tape wow, different for each voice), and CRSH lowers the bit
+ * depth and sample rate. VOIC sets how many of the seven saws play (the center first, then pairs outward).
+ * Each voice's state lives in the track's engine memory (ENG_MEM, since a track only plays one engine at a time). */
 
 /* Szabo's curves, 0..127 (made from his fits with floats, once) */
 static const int32_t SS_DETUNE[128] = { /* Q16 */

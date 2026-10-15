@@ -1,187 +1,220 @@
 # FOMAJAM
 
-A groovebox firmware for the M-VAVE FM-1, made with [foma](https://github.com/konsumer/foma): 9 tracks, each its own
-machine: a drum machine (808, 909, SDS-V, CR-78 modelled; 707, 606, DMX, LinnDrum, 505, DR-55, SK-1, KPR-77, Rhythm Ace
-from their ROMs; or your own samples) with a voice per step, or a synth with a note per step: one of
-[Felucca](https://github.com/hugelton/Felucca)'s engines (ANALOG, LOFI, TRIO, WHEEL, NOISE, PHASE, VOICE, PHYS), STRING
-(Karplus-Strong) or SUPERSAW (the JP-8000's), with their presets. 8 patterns of 16 steps, a delay, and colour themes.
+A groovebox firmware for the M-VAVE FM-1, made with [foma](https://github.com/konsumer/foma).
 
-Try it in the browser, and install it on the FM-1 from Chrome or Edge: <https://konsumer.github.io/fomajam/>
+- 9 tracks, each playing its own machine:
+  - **drum machines:** modeled 808, 909, SDS-V and CR-78; the 707, 606, DMX, LinnDrum, 505, DR-55, SK-1, KPR-77 and
+    Rhythm Ace from recordings of their ROMs; or your own samples
+  - **synths:** [Felucca](https://github.com/hugelton/Felucca)'s engines (ANALOG, LOFI, TRIO, WHEEL, NOISE, PHASE,
+    VOICE, PHYS), plus STRING (Karplus-Strong) and SUPERSAW (JP-8000 style), all with presets
+  - **MIDI out**, to sequence other gear
+- 8 patterns of 16 steps, with accents, slides and ratchets
+- a delay, drive, MIDI clock, and color themes
+
+Try it in your browser, and install it on the FM-1 from Chrome or Edge: <https://konsumer.github.io/fomajam/>
 
 ## Playing it
 
-Every page looks the same: the **header** (page, track, pattern, tempo, play/stop), the **body**, and the **knob
-bar**. KNOB1..4 always sit under the screen in the same four colours, named for what they do on that page.
+Every page has the same layout: a **header** (page, track, pattern, tempo, play/stop), the **body**, and the **knob
+bar**. The knob bar shows what KNOB1–4 do on the current page, always in the same four colors.
 
-| Control     | Does                                                                                                        |
-| ----------- | ----------------------------------------------------------------------------------------------------------- |
-| `SELECT`    | the track, 1..9                                                                                             |
-| `PRESETS`   | the pattern, 1..8 (while playing it changes at the bar)                                                     |
-| `ALGORITHM` | the tempo                                                                                                   |
-| `PLAY`      | start / stop                                                                                                |
-| `REC`       | record what you play into the pattern                                                                       |
-| `SAVE`      | keep the song (waits until you stop: saving pauses sound)                                                   |
-| `SEL`       | the next page of knobs; on PATTERN with a synth: slide the cursor's step into the next (lit when it slides) |
-| `ENV`       | clear the pattern: asks first, `OCT+` clears, `OCT-` keeps it                                               |
-| `ARP`       | on PATTERN: the cursor's step's ratchet, x1 x2 x3 x4 x6 x8 (lit when it has one)                            |
-| `OCT-/OCT+` | the keyboard's octave; when something asks (lit both): `OCT+` yes, `OCT-` no                                |
+| Control     | What it does                                                                         |
+| ----------- | ------------------------------------------------------------------------------------ |
+| `SELECT`    | Choose the track (1–9).                                                              |
+| `PRESETS`   | Choose the pattern (1–8). While playing, the change happens at the end of the bar.   |
+| `ALGORITHM` | Set the tempo.                                                                       |
+| `PLAY`      | Start or stop.                                                                       |
+| `REC`       | Record what you play into the pattern.                                               |
+| `SAVE`      | Save the song. If it's playing, it saves when you stop (saving pauses the sound).    |
+| `SEL`       | Show the next page of knobs. On PATTERN with a synth track: toggle slide on a step.  |
+| `ARP`       | On PATTERN: set the ratchet of the step under the cursor.                            |
+| `ENV`       | Clear the pattern. It asks first: `OCT+` clears, `OCT-` cancels.                     |
+| `OCT-/OCT+` | Change the keyboard's octave. When a question is shown, `OCT+` is yes, `OCT-` is no. |
 
-| Button | Page    | Keys                                     | Knobs                                                            |
-| ------ | ------- | ---------------------------------------- | ---------------------------------------------------------------- |
-| `SEQ`  | PATTERN | white = the 16 steps, black = tracks     | drum: STEP VOICE ACCENT MACHINE; synth: STEP NOTE ACCENT MACHINE |
-| `EDIT` | SOUND   | play                                     | drum: TUNE DECAY TONE LEVEL / MACHINE VOICE EXTRA SEND           |
-|        |         |                                          | synth: its two pages / ENV / PATCH (below)                       |
-| `HOME` | MIX     | white = mute tracks 1..9, black = tracks | LEVEL SEND MUTE DRIVE                                            |
-| `FX`   | FX      | play                                     | SEND TIME FDBK DRIVE                                             |
-| `GLO`  | GLOBAL  | play                                     | TEMPO: BPM SWING LENGTH THEME / MIDI: CLOCK; the CPU load (FM-1) |
+| Button | Page    | Keys                                            | Knobs                                                                         |
+| ------ | ------- | ----------------------------------------------- | ----------------------------------------------------------------------------- |
+| `SEQ`  | PATTERN | white keys: the 16 steps; black keys: tracks    | STEP, VOICE (or NOTE), ACCENT, MACHINE                                        |
+| `EDIT` | SOUND   | play the track                                  | the track's sound (see [Machines](#machines))                                 |
+| `HOME` | MIX     | white keys: mute tracks 1–9; black keys: tracks | LEVEL, SEND, MUTE, DRIVE                                                      |
+| `FX`   | FX      | play the track                                  | SEND, TIME, FDBK, DRIVE                                                       |
+| `GLO`  | GLOBAL  | play the track                                  | TEMPO page: BPM, SWING, LENGTH, THEME; MIDI page: CLOCK. Also shows CPU load. |
 
-"Play" means: on a synth track the keys are a keyboard; on a drum track they are its machine's kit
-(white keys BD SD CH OH CP RS LT MT HT CY RD CB TB MA CL TI, black keys BD2 SD2 CB2 and the congas; on SMP a sample
-a key), and the voice or note you play is the one new steps get. With `REC` on, what you play while it runs goes into
-the step that is playing; stopped, it goes into the step at the cursor, which then moves on. `REC` makes the keys play on the PATTERN page
-too, so you watch the grid fill in as you play; switch it off to edit steps again.
+**Playing the keys:** on a synth track, the keys are a keyboard. On a drum track, they play the machine's kit: the
+white keys are BD SD CH OH CP RS LT MT HT CY RD CB TB MA CL TI, and the black keys are BD2 SD2 CB2 and the congas. (On
+the SMP machine, each key plays one sample.) The last voice or note you play is what new steps use.
 
-On the PATTERN page a white key turns a step on (with the track's voice, or a synth's last note) or off, and puts the
-cursor there; KNOB2 changes the voice or note at the cursor. A drum step is coloured by its voice, so kicks, snares and
-hats on one track look different.
+**Recording:** with `REC` on, what you play goes into the step that is playing. When stopped, it goes into the step
+under the cursor, and the cursor moves to the next step. `REC` also makes the keys play on the PATTERN page, so you can
+watch the grid fill in. Turn it off to go back to editing steps.
 
-**Ratchets** (trap and witch house rolls): ARP on the PATTERN page gives the cursor's step a ratchet, round x1 x2 x3
-x4 x6 x8: the step plays that many times, evenly across its length (swung with it), each as loud as the step (an
-accent: all of them). It works on every track: a drum rolls, a synth retriggers its note, MIDI sends them. A step
-with a ratchet does not slide. On the grid its cell is cut in its hits (x6 and x8: four, and underlined).
+**Editing steps:** on the PATTERN page, a white key turns a step on or off and moves the cursor to it. A new step uses
+the track's current voice (or a synth's last note); KNOB2 changes it. Drum steps are colored by voice, so kicks,
+snares and hats on the same track look different.
+
+**Ratchets** (the rolls in trap and witch house): press `ARP` on the PATTERN page to cycle the step under the cursor
+through ×1, ×2, ×3, ×4, ×6 and ×8. The step then plays that many times, evenly spaced across the step (and swung with
+it). Every repeat is as loud as the step, so an accented step accents the whole roll. Ratchets work on every track:
+drums roll, synths retrigger their note, and MIDI tracks send the repeats. A ratcheted step doesn't slide. On the grid,
+the cell is split into its repeats (×6 and ×8 show four segments with a line underneath).
 
 ## Machines
 
-MACHINE on any track picks what it plays: one of the drum machines below, or a synth engine. Two tracks on one
-machine are two independent instruments. For a 303 line: ANALOG's ACID preset (MONO), accents and slides on the
-steps.
+`MACHINE` sets what a track plays: a drum machine, a synth engine or MIDI out. Two tracks on the same machine are two
+separate instruments. For a 303-style bassline, use ANALOG's ACID preset with MONO on, and add accents and slides to
+the steps.
 
 ### Synth engines
 
-Felucca's engines and STRING and SUPERSAW (ours, in their form), each with its eight parameters and its presets (picking the engine
-loads its first):
+Each engine has eight parameters and a set of presets. Choosing an engine loads its first preset.
 
-| Engine   | What it is                                                                                                                                                                                                                                                |
-| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ANALOG   | two band-limited oscillators (saw, square, triangle, sine, PWM, sync, sub), noise, drive, a resonant filter                                                                                                                                               |
-| LOFI     | a chip voice: pulse, triangle, saw, shift-register noise, 4-bit wave memory, bit depth, arpeggio                                                                                                                                                          |
-| TRIO     | three oscillators with ring modulation, hard sync and AND waves into a multimode filter                                                                                                                                                                   |
-| WHEEL    | a tonewheel organ: nine drawbars, percussion, key click, drive, rotary                                                                                                                                                                                    |
-| NOISE    | white / pink / brown noise, impulses, shift-register noise through a resonant filter, a bit crusher                                                                                                                                                       |
-| PHASE    | phase distortion (CZ-style)                                                                                                                                                                                                                               |
-| VOICE    | formants: vowels, a choir, a talking bass                                                                                                                                                                                                                 |
-| PHYS     | physical models: modal bars and bells, strings, membranes, sympathetic strings                                                                                                                                                                            |
-| STRING   | a plucked string (Karplus-Strong): noise, pick or soft burst, pluck position, damping, decay, bow                                                                                                                                                         |
-| SUPERSAW | the JP-8000's super saw after Adam Szabo's measurements: seven free-running saws, his detune and mix curves, the high-pass at the fundamental; a resonant low-pass, DRFT (tape wow) and CRSH (bits, rate) for the dark and worn: WITCH, DRAG CHOIR, GHOST |
+| Engine   | What it is                                                                                                                                                                                                                                                                                          |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ANALOG   | Two band-limited oscillators (saw, square, triangle, sine, PWM, sync, sub), noise, drive and a resonant filter.                                                                                                                                                                                     |
+| LOFI     | A chip-style voice: pulse, triangle, saw, shift-register noise, 4-bit wavetables, bit depth and arpeggio.                                                                                                                                                                                           |
+| TRIO     | Three oscillators with ring modulation, hard sync and AND waves, into a multimode filter.                                                                                                                                                                                                           |
+| WHEEL    | A tonewheel organ: nine drawbars, percussion, key click, drive and rotary speaker.                                                                                                                                                                                                                  |
+| NOISE    | White, pink and brown noise, impulses and shift-register noise through a resonant filter, with a bit crusher.                                                                                                                                                                                       |
+| PHASE    | Phase distortion, in the style of Casio's CZ synths.                                                                                                                                                                                                                                                |
+| VOICE    | Formant synthesis: vowels, choirs and a talking bass.                                                                                                                                                                                                                                               |
+| PHYS     | Physical models: struck bars and bells, strings, membranes and sympathetic strings.                                                                                                                                                                                                                 |
+| STRING   | A plucked string (Karplus-Strong): pick and pluck position, damping, decay and a bowing option.                                                                                                                                                                                                     |
+| SUPERSAW | The JP-8000 super saw, based on Adam Szabo's measurements: seven free-running saws, his detune and mix curves, and a high-pass at the note's fundamental. A resonant low-pass, DRFT (tape wobble) and CRSH (lower bit depth and sample rate) make it dark and worn. Try WITCH, DRAG CHOIR or GHOST. |
 
-On a synth engine the SOUND page has five pages of knobs, SEL moves along the tabs: the engine's two (its own names:
-OSC / FLT on ANALOG), ENV (ATTACK DECAY SUSTN RELEASE), PATCH (PRESET, ENV>FLT: the envelope's sweep of the filter,
-LEVEL, SEND) and PLAY (GATE, MONO, GLIDE, TUNE). GATE is how much of its step a sequenced note is held, or TIE: held
-until the track's next note, which takes over from it (a pad line; with MONO on it glides on, no new attack). Picking
-a preset sets it: TIE for a slow attack (a pad), else half the step. An accented step opens the filter, a step with
-slide glides into the next. Each track has two voices; at most eight synth voices sound at once, the oldest giving
-way.
+STRING and SUPERSAW are written for this firmware in the same form as Felucca's engines.
+
+On a synth track, the SOUND page has five pages of knobs (`SEL` steps through the tabs):
+
+| Page                 | Knobs                                                                 |
+| -------------------- | --------------------------------------------------------------------- |
+| the engine's 2 pages | its own parameters (for ANALOG: OSC and FLT)                          |
+| ENV                  | ATTACK, DECAY, SUSTN (sustain), RELEASE                               |
+| PATCH                | PRESET, ENV>FLT (how far the envelope sweeps the filter), LEVEL, SEND |
+| PLAY                 | GATE, MONO, GLIDE, TUNE                                               |
+
+`GATE` sets how much of its step a sequenced note is held. At `TIE`, a note is held until the track's next note, which
+takes over from it; use this for pad lines. With MONO on, a tied note glides into the next one without a new attack.
+Choosing a preset sets GATE for you: TIE for slow-attack presets (pads), otherwise half a step.
+
+An accented step opens the filter, and a step with slide glides into the next one. Each track has two voices, and at
+most eight synth voices play at once (the oldest gives way).
 
 ### Drum machines
 
-On a drum machine each step plays one of its voices: BD BD2 SD SD2 RS CP LT MT HT CH OH CY RD
-CB CB2 TB, the congas, TI MA CL. A machine plays the voices it had; one it lacks is played by its nearest neighbour,
-retuned (a DR-55 has no open hat, so its closed one plays it), and VOICE skips what it cannot play at all. A closed hat
-chokes an open one on the same track. Combine machines by giving tracks different ones: a 909 kick, 808 claps, 707
-tambourine.
+On a drum machine, each step plays one voice: BD BD2 SD SD2 RS CP LT MT HT CH OH CY RD CB CB2 TB, the congas, TI MA
+CL. If a machine doesn't have a voice, its closest voice plays it instead, retuned (for example, the DR-55 has no open
+hi-hat, so its closed hi-hat stands in). `VOICE` skips voices a machine can't play at all. A closed hi-hat cuts off
+an open one on the same track. To mix machines, give tracks different ones: a 909 kick, 808 claps, a 707 tambourine.
 
-| Machine                                         | How                                                                  |
-| ----------------------------------------------- | -------------------------------------------------------------------- |
-| 808, 909, SDS (SDS-V), CR78                     | modelled from how the circuits work, as in trommelsynthesizer        |
-| 707, 606, DMX, LINN, 505, DR55, SK1, KPR77, ACE | recordings of their own ROM samples, 4-bit ADPCM, tails cut at 0.8 s |
-| SMP                                             | your `samples/` (when there are any)                                 |
+| Machine                                         | How it's made                                                     |
+| ----------------------------------------------- | ----------------------------------------------------------------- |
+| 808, 909, SDS (SDS-V), CR78                     | modeled on how the circuits work, ported from trommelsynthesizer  |
+| 707, 606, DMX, LINN, 505, DR55, SK1, KPR77, ACE | recordings of their own ROM samples, as 4-bit ADPCM, cut at 0.8 s |
+| SMP                                             | your own samples from `samples/` (only shown when there are any)  |
 
-The knobs mean the same on every machine: TUNE (+-12 semitones), DECAY (64 = the machine's own), TONE (64 = neutral:
-the voice's own tone control; on a recording lower is darker, higher brighter), LEVEL, and EXTRA: ATTACK on a kick,
-SNAPPY on a snare.
+The knobs work the same on every drum machine:
 
-The ROM machines are in [tools/roms.py](tools/roms.py) (`MACHINES`): the build downloads their recordings from
-[tidal-drum-machines](https://github.com/geikha/tidal-drum-machines) (pinned to a commit) into `roms/` once, and goes
-on without them when it can't. They go in in the order there until `BUDGET` (430 KiB) is spent, and the build says
-which were left out (LM-1, Space Drum, RZ-1, DR-110, Drumulator, RX5, HR-16, SDS-5, Drumtraks and MPC60 are listed and
-wait): move one up to have it. See [LICENSING.md](LICENSING.md) about these recordings.
+- **TUNE:** ±12 semitones.
+- **DECAY:** 64 is the machine's own decay.
+- **TONE:** 64 is neutral. On modeled machines it is the voice's tone control; on recordings, lower is darker and
+  higher is brighter.
+- **LEVEL**
+- **EXTRA:** ATTACK on a kick, SNAPPY on a snare.
+
+The ROM machines are listed in [tools/roms.py](tools/roms.py) (`MACHINES`). The first build downloads their
+recordings from [tidal-drum-machines](https://github.com/geikha/tidal-drum-machines) (pinned to one commit) into
+`roms/`. Without a network connection, the build continues without them.
+
+Machines are added in the order they're listed until `BUDGET` (430 KiB of flash) is used up, and the build tells you
+which ones didn't fit. LM-1, Space Drum, RZ-1, DR-110, Drumulator, RX5, HR-16, SDS-5, Drumtraks and MPC60 are listed
+but don't fit; to include one, move it higher in the list. See [LICENSING.md](LICENSING.md) about these recordings.
 
 ### MIDI
 
-MIDI in: each track has its own channel: channels 1..9 play tracks 1..9 (whatever machine they are: a keyboard plays
-any of them), channel 10 the track chosen. A drum machine takes General MIDI drum keys, a synth notes.
+**MIDI in:** each track has its own channel. Channels 1–9 play tracks 1–9, whatever machine they use, so a keyboard
+can play any of them. Channel 10 plays the selected track. Drum machines respond to General MIDI drum notes; synths
+respond to any note.
 
-**MIDI out** is a machine (MIDI, `MID` on the grid): its steps are sent, not heard. A step is a note on the track's
-channel, at its VELO (an accent: 127), let go after GATE % of the step; a step with slide is sent legato (the next
-note before this one's note-off), for the synth at the other end to glide. Its SOUND page has three pages of knobs:
-NOTE (CHAN, PROG: a program change, sent as you turn it and as the song starts; GATE, or TIE: held to the next
-note; VELO), CC (four controllers,
-sent as you turn them: CC74 CC71 CC1 CC10 unless you change them) and CC# (which controllers they are). Keys and MIDI
-in on a MIDI track go out on its channel too (a keyboard through the FM-1 to another synth).
+**MIDI out** is a machine (MIDI, shown as `MID` on the grid). Its steps are sent over USB MIDI instead of making a
+sound:
 
-GLOBAL's second page (SEL) has CLOCK: MIDI clock out (24 a beat, with start and stop) while it plays.
+- Each step sends a note on the track's channel at its velocity (127 if accented).
+- The note-off comes after GATE % of the step, or at the next note with `TIE`.
+- A step with slide is sent legato (the next note-on comes before this note-off), so the receiving synth can glide.
+- Keys and MIDI in on a MIDI track are sent out on its channel too, so you can play another synth through the FM-1.
+
+Its SOUND page has three pages of knobs:
+
+| Page | Knobs                                                                                          |
+| ---- | ---------------------------------------------------------------------------------------------- |
+| NOTE | CHAN, PROG (a program change, sent when you turn it and when the song starts), GATE, VELO      |
+| CC   | four MIDI controllers, sent as you turn them (CC74, CC71, CC1 and CC10 unless you change them) |
+| CC#  | which controller numbers the CC page sends                                                     |
+
+**MIDI clock:** the GLOBAL page's second page (press `SEL`) has `CLOCK`. When it's on, the FM-1 sends MIDI clock
+(24 ticks per beat) with start and stop messages.
 
 ## Samples
 
-Put `.wav` files in `samples/`: any PCM wav (8/16/24-bit, mono or stereo, any rate). The build makes them 16-bit mono
-at 22050 Hz, up to 2 seconds each, and they become the SMP machine: a voice per file, named by it (`01-boom.wav` is
-`BOOM`). They share the flash with the ROM machines: drop a ROM machine for room.
+Put `.wav` files in `samples/`. Any PCM WAV works (8, 16 or 24-bit, mono or stereo, any sample rate). The build
+converts them to 16-bit mono at 22050 Hz, up to 2 seconds each, and they become the SMP machine: one voice per file,
+named after it (`01-boom.wav` becomes `BOOM`). Samples share flash with the ROM machines, so you may need to remove a
+ROM machine to make room.
 
 ## Themes
 
-[src/themes.h](src/themes.h): one per FM-1 finish (BLACK, GREY, BLUE, GREEN, FOREST, PURPLE, RED, ORANGE, TEAL) and two
-spares (WHITE, a light screen, and NEON). THEME on the GLOBAL page recolours the screen as you turn it. A theme is a dozen colours;
-add one there and it is on the GLOBAL page. The eight track colours also colour the drum voices (kicks the first,
-snares the second, claps the third, closed hats the fourth ...).
+The themes are in [src/themes.h](src/themes.h): one for each FM-1 color (BLACK, GREY, BLUE, GREEN, FOREST, PURPLE,
+RED, ORANGE, TEAL), plus WHITE (a light screen) and NEON. `THEME` on the GLOBAL page changes the colors as you turn it.
+A theme is about a dozen colors; add one to the file and it appears on the GLOBAL page. The eight track colors also
+color the drum voices: kicks use the first, snares the second, claps the third, closed hi-hats the fourth, and so on.
 
 ## Develop
 
-Only Docker is needed:
+You only need Docker:
 
 ```sh
-./fm1 dev          # http://localhost:8000: the emulator, the installer, the rescue; rebuilds when you save
+./fm1 dev          # http://localhost:8000: the emulator, installer and rescue; rebuilds when you save
 ./fm1 build        # build/fomajam-VERSION.fwsc
 ```
 
-| File                                     |                                                                  |
-| ---------------------------------------- | ---------------------------------------------------------------- |
-| [src/main.c](src/main.c)                 | the pages, the knobs, the keys, the song to start with           |
-| [src/drums.c](src/drums.c)               | the drum machines: the voice kinds, the recordings, choke        |
-| [src/engine.c](src/engine.c)             | the clock, the delay, the output                                 |
-| [src/synths.c](src/synths.c)             | the host of Felucca's synth engines (`vendor/`)                  |
-| [src/eng_string.h](src/eng_string.h)     | STRING, an engine in Felucca's form                              |
-| [src/eng_supersaw.h](src/eng_supersaw.h) | SUPERSAW, an engine in Felucca's form                            |
-| [src/groove.h](src/groove.h)             | the song (it is also what is saved: 4 KiB at most)               |
-| [src/drums.h](src/drums.h)               | the modelled machines as integers, made by `tools/drums.py`      |
-| [src/gains.h](src/gains.h)               | each modelled voice's level, made by `test/render.c --calibrate` |
-| [src/themes.h](src/themes.h)             | the colours                                                      |
-| [src/tables.h](src/tables.h)             | curves, made by `python3 tools/tables.py`                        |
-| [tools/samples.py](tools/samples.py)     | `samples/*.wav` to `build/gen/samples.h` (the build runs it)     |
-| [tools/roms.py](tools/roms.py)           | the ROM machines to `build/gen/roms.h` (the build runs it)       |
-| [test/render.c](test/render.c)           | the sound on the computer: checks, calibration, .wav renders     |
+| File                                     | What it is                                                            |
+| ---------------------------------------- | --------------------------------------------------------------------- |
+| [src/main.c](src/main.c)                 | the pages, knobs and keys, and the song it starts with                |
+| [src/drums.c](src/drums.c)               | the drum machines: voice models, recordings, hi-hat choke             |
+| [src/engine.c](src/engine.c)             | the sequencer clock, MIDI out, the delay and the output               |
+| [src/synths.c](src/synths.c)             | the host for the synth engines (Felucca's are in `vendor/`)           |
+| [src/eng_string.h](src/eng_string.h)     | the STRING engine                                                     |
+| [src/eng_supersaw.h](src/eng_supersaw.h) | the SUPERSAW engine                                                   |
+| [src/groove.h](src/groove.h)             | the song format (also what gets saved, 4 KiB at most)                 |
+| [src/drums.h](src/drums.h)               | the modeled drum machines as integer tables, made by `tools/drums.py` |
+| [src/gains.h](src/gains.h)               | each modeled voice's level, made by `test/render.c --calibrate`       |
+| [src/themes.h](src/themes.h)             | the color themes                                                      |
+| [src/tables.h](src/tables.h)             | lookup tables, made by `python3 tools/tables.py`                      |
+| [tools/samples.py](tools/samples.py)     | converts `samples/*.wav` to `build/gen/samples.h` (run by the build)  |
+| [tools/roms.py](tools/roms.py)           | builds the ROM machines into `build/gen/roms.h` (run by the build)    |
+| [test/render.c](test/render.c)           | renders and checks the sound on your computer                         |
 
-To hear and check the sound without the FM-1 (after a build, which makes `build/gen/`):
+To hear and check the sound without an FM-1 (after a build, which creates `build/gen/`):
 
 ```sh
 cc -O2 -Isrc -Iplatform -Ibuild/gen -Ivendor/felucca-engines/src -Ivendor/felucca -D__wasm__ \
   -o build/render test/render.c src/{drums,engine,main,synths}.c -lm
-build/render --check          # every voice of every machine sounds, stays finite, dies away
-build/render --wav /tmp/kit   # a .wav per machine and voice
-build/render --synths         # every preset of every synth engine sounds, stays finite, dies away
-build/render --song song.wav  # 8 s of the song it starts with (add N for pattern N)
-build/render --midi           # a MIDI track and the clock through a bar: the messages and when
+build/render --check          # every drum voice sounds, stays in range and dies away
+build/render --wav /tmp/kit   # a .wav for every machine and voice
+build/render --synths         # the same checks for every synth preset
+build/render --song song.wav  # 8 seconds of the starting song (add N for pattern N)
+build/render --midi           # the MIDI messages a MIDI track and the clock send in one bar, with their times
 ```
 
-What the firmware can call is in [platform/fm1.h](platform/fm1.h). Name, version and package identity:
-[firmware.json](firmware.json). The rules of the chip (no floats, keep `audio()` short, ...) are in
-[foma's README](https://github.com/konsumer/foma#the-rules-of-the-chip).
+The functions the firmware can call are in [platform/fm1.h](platform/fm1.h). The name, version and package identity
+are in [firmware.json](firmware.json). The rules of the chip (no floating point, keep `audio()` short, and so on) are
+in [foma's README](https://github.com/konsumer/foma#the-rules-of-the-chip).
 
-Every push to `main` publishes the emulator and the installer to GitHub Pages (Settings → Pages → Source: GitHub
-Actions); a tag (`v0.2`) also makes a release with the `.fwsc`.
+Every push to `main` publishes the emulator and installer to GitHub Pages (Settings → Pages → Source: GitHub Actions).
+Pushing a tag (like `v0.2`) also creates a release with the `.fwsc` file.
 
-Installing firmware is at your own risk. If the FM-1 does not start, hold OCT- while switching it on (the USB rescue),
-then install from the page.
+Installing firmware is at your own risk. If the FM-1 doesn't start, hold OCT- while switching it on to enter USB
+rescue mode, then install from the page.
 
 ## License
 
-GPL-3.0-only. Credits and third-party parts: [LICENSING.md](LICENSING.md).
+GPL-3.0-only. For credits and third-party parts, see [LICENSING.md](LICENSING.md).

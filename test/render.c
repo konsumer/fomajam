@@ -1,16 +1,16 @@
-/* FOMAJAM's sound, on the computer: render voices and songs to check them by ear and by numbers.
+/* Render FOMAJAM's sound on your computer, to check it by ear and by numbers.
  *
- *   ./fm1 build    (once: it makes build/gen/)
+ *   ./fm1 build    (once, to create build/gen/)
  *   cc -O2 -Isrc -Iplatform -Ibuild/gen -Ivendor/felucca-engines/src -Ivendor/felucca -D__wasm__ \
  *      -o build/render test/render.c src/{drums,engine,main,synths}.c -lm
- *   build/render --check            every voice of every drum machine: sounds, stays finite, dies away
- *   build/render --synths [DIR]     every preset of every synth engine: the same (and a .wav each in DIR)
- *   build/render --calibrate        writes src/gains.h: each modelled voice brought to its TARGET peak
- *   build/render --wav DIR          a .wav per machine and voice
- *   build/render --song FILE [N]    8 s of the song the firmware starts with (pattern N, 1..8)
- *   build/render --midi             a MIDI track and the clock through a bar: the messages and when
+ *   build/render --check            every voice of every drum machine sounds, stays in range and dies away
+ *   build/render --synths [DIR]     the same checks for every synth preset (and writes a .wav of each to DIR)
+ *   build/render --calibrate        rewrites src/gains.h, bringing each modeled voice to its TARGET peak
+ *   build/render --wav DIR          writes a .wav of every machine and voice
+ *   build/render --song FILE [N]    8 seconds of the song the firmware starts with (pattern N, 1-8)
+ *   build/render --midi             the MIDI messages a MIDI track and the clock send in one bar, with times
  *
- * The panel and the screen are stubs here; sine() and note_inc() use floats, which the FM-1 does not. */
+ * The panel and screen are stubbed out here, and sine() and note_inc() use floating point (the FM-1 doesn't). */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -132,7 +132,7 @@ int main(int argc, char **argv) {
       }
       printf("\n");
     }
-    printf("%s: %d voices failed (silent, blowing up, or never dying away)\n", fails ? "FAILED" : "ok", fails);
+    printf("%s: %d voices failed (silent, out of range, or not fading out)\n", fails ? "FAILED" : "ok", fails);
     return fails != 0;
   }
   if (!strcmp(mode, "--synths")) { /* a note held 0.6 s, then 7.4 s to die away (a pad's release is long) */
@@ -214,7 +214,7 @@ int main(int argc, char **argv) {
   if (!strcmp(mode, "--calibrate")) {
     extern const int16_t *gain_table(void);
     FILE *f = fopen("src/gains.h", "w");
-    fprintf(f, "/* made by test/render.c --calibrate: do not edit. Each modelled voice's gain, Q15, so that at the\n"
+    fprintf(f, "/* made by test/render.c --calibrate: do not edit. Each modeled voice's gain, Q15, so that at the\n"
                " * default knobs it peaks at TARGET (drums.h) */\n#ifndef GAINS_H\n#define GAINS_H\n#include \"drums.h\"\n"
                "static const int16_t GAIN[M_MODELLED][V_COUNT] = {\n");
     for (int m = 0; m < M_MODELLED; m++) {
