@@ -9,7 +9,8 @@ A groovebox firmware for the M-VAVE FM-1, made with [foma](https://github.com/ko
     VOICE, PHYS), plus STRING (Karplus-Strong) and SUPERSAW (JP-8000 style), all with presets
   - **MIDI out**, to sequence other gear
 - 8 patterns of 16 steps, with accents, slides and ratchets
-- a delay, drive, MIDI clock, and color themes
+- effects: delay, reverb and chorus sends, kick ducking, a master filter and 11 kinds of distortion
+- MIDI clock, and color themes
 
 Try it in your browser, and install it on the FM-1 from Chrome or Edge: <https://konsumer.github.io/fomajam/>
 
@@ -35,8 +36,8 @@ bar**. The knob bar shows what KNOB1–4 do on the current page, always in the s
 | ------ | ------- | ----------------------------------------------- | ----------------------------------------------------------------------------- |
 | `SEQ`  | PATTERN | white keys: the 16 steps; black keys: tracks    | STEP, VOICE (or NOTE), ACCENT, MACHINE                                        |
 | `EDIT` | SOUND   | play the track                                  | the track's sound (see [Machines](#machines))                                 |
-| `HOME` | MIX     | white keys: mute tracks 1–9; black keys: tracks | LEVEL, SEND, MUTE, DRIVE                                                      |
-| `FX`   | FX      | play the track                                  | SEND, TIME, FDBK, DRIVE                                                       |
+| `HOME` | MIX     | white keys: mute tracks 1–9; black keys: tracks | LEVEL, DELAY, REVERB, MUTE                                                    |
+| `FX`   | FX      | play the track                                  | 4 pages (press `SEL`): see [Effects](#effects)                                |
 | `GLO`  | GLOBAL  | play the track                                  | TEMPO page: BPM, SWING, LENGTH, THEME; MIDI page: CLOCK. Also shows CPU load. |
 
 **Playing the keys:** on a synth track, the keys are a keyboard. On a drum track, they play the machine's kit: the
@@ -56,6 +57,23 @@ through ×1, ×2, ×3, ×4, ×6 and ×8. The step then plays that many times, ev
 it). Every repeat is as loud as the step, so an accented step accents the whole roll. Ratchets work on every track:
 drums roll, synths retrigger their note, and MIDI tracks send the repeats. A ratcheted step doesn't slide. On the grid,
 the cell is split into its repeats (×6 and ×8 show four segments with a line underneath).
+
+## Effects
+
+Each track sends to a delay, a reverb and a chorus. The mix then goes through the master filter and the distortion.
+The FX page has four pages of knobs (press `SEL` to move on), and each page draws what its knobs do:
+
+| Page   | Knobs                       | What they do                                                                                                       |
+| ------ | --------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| SENDS  | DELAY, REVERB, CHORUS, DUCK | the selected track's sends, and how much track 1 ducks it (track 1 shows `KEY`: it does the ducking)               |
+| SPACE  | TIME, FDBK, SIZE, DAMP      | the delay's time (in 16ths) and feedback; the reverb's size and how dark it gets                                   |
+| MOTION | RATE, DEPTH, PUMP           | the chorus's speed and depth; how fast a ducked track comes back                                                   |
+| MASTER | FILTER, RESO, DRIVE, TYPE   | one-knob filter (left of center low-pass, right high-pass, center off), its resonance, the distortion and its kind |
+
+**Ducking** gives the pumping sound of trap and witch house: put the kick on track 1 and turn up DUCK on the bass and
+pads. **Distortion types:** SOFT (a gentle saturation, the default), HARD (clipping), TUBE (warm, uneven), DIODE (soft
+above, hard below), FUZZ, FOLD (wavefolding), WAVE (rounder folding), RECT (rectified: an octave up), BITS (fewer
+bits), RATE (lower sample rate) and CRUSH (both).
 
 ## Machines
 
@@ -84,18 +102,19 @@ STRING and SUPERSAW are written for this firmware in the same form as Felucca's 
 
 On a synth track, the SOUND page has five pages of knobs (`SEL` steps through the tabs):
 
-| Page                 | Knobs                                                                 |
-| -------------------- | --------------------------------------------------------------------- |
-| the engine's 2 pages | its own parameters (for ANALOG: OSC and FLT)                          |
-| ENV                  | ATTACK, DECAY, SUSTN (sustain), RELEASE                               |
-| PATCH                | PRESET, ENV>FLT (how far the envelope sweeps the filter), LEVEL, SEND |
-| PLAY                 | GATE, MONO, GLIDE, TUNE                                               |
+| Page                 | Knobs                                                                  |
+| -------------------- | ---------------------------------------------------------------------- |
+| the engine's 2 pages | its own parameters (for ANALOG: OSC and FLT)                           |
+| ENV                  | ATTACK, DECAY, SUSTN (sustain), RELEASE                                |
+| PATCH                | PRESET, ENV>FLT (how far the envelope sweeps the filter), LEVEL, DELAY |
+| PLAY                 | GATE, MONO, GLIDE, TUNE                                                |
 
 `GATE` sets how much of its step a sequenced note is held. At `TIE`, a note is held until the track's next note, which
 takes over from it; use this for pad lines. With MONO on, a tied note glides into the next one without a new attack.
 Choosing a preset sets GATE for you: TIE for slow-attack presets (pads), otherwise half a step.
 
-An accented step opens the filter, and a step with slide glides into the next one. Each track has two voices, and at
+An accented step opens the filter, and a step with slide (`SEL` on the PATTERN page) glides into the next one, even
+with MONO off. Each track has two voices, and at
 most eight synth voices play at once (the oldest gives way).
 
 ### Drum machines
@@ -180,7 +199,8 @@ You only need Docker:
 | ---------------------------------------- | --------------------------------------------------------------------- |
 | [src/main.c](src/main.c)                 | the pages, knobs and keys, and the song it starts with                |
 | [src/drums.c](src/drums.c)               | the drum machines: voice models, recordings, hi-hat choke             |
-| [src/engine.c](src/engine.c)             | the sequencer clock, MIDI out, the delay and the output               |
+| [src/engine.c](src/engine.c)             | the sequencer clock, MIDI out, the mix, the delay and the output      |
+| [src/fx.c](src/fx.c)                     | the reverb, chorus, master filter and distortion                      |
 | [src/synths.c](src/synths.c)             | the host for the synth engines (Felucca's are in `vendor/`)           |
 | [src/eng_string.h](src/eng_string.h)     | the STRING engine                                                     |
 | [src/eng_supersaw.h](src/eng_supersaw.h) | the SUPERSAW engine                                                   |

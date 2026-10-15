@@ -210,8 +210,16 @@ void synths_note(int t, int note, int vel, int slide, int32_t gate) {
       }
     }
   }
-  int pick = 0;
-  if (!s->mono) { /* the same note, else a free voice, else the oldest */
+  int pick = 0, held = -1;
+  for (int i = 0; slide && i < NVOICE; i++) { /* a slide: the newest held voice glides on */
+    voice_t *v = &T->v[i];
+    if (v->active && v->gate && v->stage != 4 && (held < 0 || v->age > T->v[held].age)) {
+      held = i;
+    }
+  }
+  if (held >= 0) {
+    pick = held;
+  } else if (!s->mono) { /* the same note, else a free voice, else the oldest */
     for (int i = 0; i < NVOICE; i++) {
       voice_t *v = &T->v[i];
       if (v->active && v->note == note) {
@@ -292,7 +300,7 @@ static int32_t env_tick(const track_t *T, voice_t *v) {
   return v->env >> 9;
 }
 
-void synths_render(int t, int32_t *mix, int32_t *snd, uint32_t n) {
+void synths_render(int t, int32_t *out, uint32_t n) {
   const song_track_t *s = &song.track[t];
   int e = machine_engine(s->machine);
   track_t *T = &trk[t];
@@ -367,10 +375,8 @@ void synths_render(int t, int32_t *mix, int32_t *snd, uint32_t n) {
       v->stage = 0;
     }
   }
-  int32_t level = s->level * 258, send = s->send * 258;
+  int32_t level = s->level * 258;
   for (uint32_t i = 0; i < n; i++) {
-    int32_t x = buf[i] * (level >> 4) >> 11;
-    mix[i] += x;
-    snd[i] += x * (send >> 4) >> 11;
+    out[i] += buf[i] * (level >> 4) >> 11;
   }
 }

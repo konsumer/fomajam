@@ -385,8 +385,8 @@ static void drum_hit(int t, int v, int vel) {
   hits[t]++;
 }
 
-/* one voice into mix (and the send) for n frames */
-static void voice_render(dv_t *v, int32_t *mix, int32_t *snd, uint32_t n, int32_t send) {
+/* one voice into out for n frames */
+static void voice_render(dv_t *v, int32_t *out, uint32_t n) {
   const patch_t *p = v->p;
   uint32_t choke = TAU[TAU_CHOKE];
   for (uint32_t i = 0; i < n; i++) {
@@ -534,8 +534,7 @@ static void voice_render(dv_t *v, int32_t *mix, int32_t *snd, uint32_t n, int32_
     }
     v->t++;
     x = (int32_t)(((int64_t)x * v->gain) >> 15);
-    mix[i] += x;
-    snd[i] += x * (send >> 4) >> 11;
+    out[i] += x;
     if (quiet) {
       v->on = 0;
       return;
@@ -543,12 +542,10 @@ static void voice_render(dv_t *v, int32_t *mix, int32_t *snd, uint32_t n, int32_
   }
 }
 
-void drums_render(int32_t *mix, int32_t *snd, uint32_t n) {
-  for (int t = 0; t < TRACKS; t++) {
-    for (int i = 0; i < POLY; i++) {
-      if (dv[t][i].on) {
-        voice_render(&dv[t][i], mix, snd, n, song.track[t].send * 258);
-      }
+void drums_render(int t, int32_t *out, uint32_t n) {
+  for (int i = 0; i < POLY; i++) {
+    if (dv[t][i].on) {
+      voice_render(&dv[t][i], out, n);
     }
   }
 }

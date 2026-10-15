@@ -8,7 +8,7 @@
  *   SEQ        PATTERN  white keys are steps, black keys pick tracks
  *   EDIT       SOUND    the track's sound (SEL shows the next page of knobs); the keys play
  *   HOME       MIX      levels; white keys mute tracks, black keys pick tracks
- *   FX         FX       the delay and the drive; the keys play
+ *   FX         FX       sends, delay, reverb, chorus, ducking, the master filter and distortion; the keys play
  *   GLO        GLOBAL   tempo, swing, length, theme, MIDI clock; the keys play
  *   SELECT     picks the track        PRESETS    picks the pattern (it changes at the end of the bar)
  *   ALGORITHM  sets the tempo         PLAY / REC / SAVE / OCT- OCT+
@@ -54,6 +54,8 @@ enum { F_NUM,
        F_CHAN,
        F_GATE,
        F_PROG,
+       F_FILTER,
+       F_DIST,
        F_NONE };
 enum { P_TUNE,
        P_DECAY,
@@ -104,6 +106,17 @@ enum { P_TUNE,
        P_CCN2,
        P_CCN3,
        P_CLOCK,
+       P_RSEND, /* the effects (fx.c) */
+       P_CSEND,
+       P_DUCK,
+       P_RSIZE,
+       P_RDAMP,
+       P_CRATE,
+       P_CDEPTH,
+       P_PUMP,
+       P_FILTER,
+       P_RESO,
+       P_DTYPE,
        P_NONE, /* an empty knob */
        PARAMS };
 static const struct {
@@ -117,7 +130,7 @@ static const struct {
     [P_MACHINE] = {"MACHINE", 0, 0, F_MACHINE}, /* up to: phi() */
     [P_VOICE] = {"VOICE", 0, 0, F_VOICE},
     [P_EXTRA] = {"EXTRA", 0, 127, F_NUM},
-    [P_SEND] = {"SEND", 0, 127, F_NUM},
+    [P_SEND] = {"DELAY", 0, 127, F_NUM},
     [P_SLIDE] = {"SLIDE", 0, 127, F_NUM},
     [P_STEP] = {"STEP", 0, STEPS - 1, F_STEP},
     [P_STACC] = {"ACCENT", 0, 1, F_ONOFF},
@@ -159,6 +172,17 @@ static const struct {
     [P_CCN2] = {"CC3 #", 0, 127, F_NUM},
     [P_CCN3] = {"CC4 #", 0, 127, F_NUM},
     [P_CLOCK] = {"CLOCK", 0, 1, F_ONOFF},
+    [P_RSEND] = {"REVERB", 0, 127, F_NUM},
+    [P_CSEND] = {"CHORUS", 0, 127, F_NUM},
+    [P_DUCK] = {"DUCK", 0, 127, F_NUM},
+    [P_RSIZE] = {"SIZE", 0, 127, F_NUM},
+    [P_RDAMP] = {"DAMP", 0, 127, F_NUM},
+    [P_CRATE] = {"RATE", 0, 127, F_NUM},
+    [P_CDEPTH] = {"DEPTH", 0, 127, F_NUM},
+    [P_PUMP] = {"PUMP", 0, 127, F_NUM},
+    [P_FILTER] = {"FILTER", 0, 127, F_FILTER},
+    [P_RESO] = {"RESO", 0, 127, F_NUM},
+    [P_DTYPE] = {"TYPE", 0, DISTS - 1, F_DIST},
     [P_NONE] = {"", 0, 0, F_NONE},
 };
 
@@ -222,7 +246,8 @@ static const char *pname(int id) {  /* EXTRA is what the voice's original called
 static int is_midi(int t) { return machine_midi(machine_of(t)); }
 
 static int subpages(void) {
-  return page == PG_GLOBAL ? 2 : page != PG_SOUND    ? 1
+  return page == PG_GLOBAL ? 2 : page == PG_FX       ? 4
+                             : page != PG_SOUND      ? 1
                              : engine_of(track) >= 0 ? 5
                              : is_midi(track)        ? 3
                                                      : 2;
@@ -230,11 +255,12 @@ static int subpages(void) {
 
 static const char *subpage_name(int i) { /* the tabs on the SOUND and GLOBAL pages */
   static const char *const DRUM[2] = {"PLAY", "MORE"}, *const SE[3] = {"ENV", "PATCH", "PLAY"}, *const MIDI[3] = {"NOTE", "CC", "CC#"},
-                           *const GLOBAL[2] = {"TEMPO", "MIDI"};
+                           *const GLOBAL[2] = {"TEMPO", "MIDI"}, *const FX[4] = {"SENDS", "SPACE", "MOTION", "MASTER"};
   int e = engine_of(track);
-  return page == PG_GLOBAL ? GLOBAL[i & 1] : e >= 0       ? (i < 2 ? synth_page(e, i) : SE[i - 2])
-                                         : is_midi(track) ? MIDI[i % 3]
-                                                          : DRUM[i & 1];
+  return page == PG_GLOBAL ? GLOBAL[i & 1] : page == PG_FX ? FX[i & 3]
+                                         : e >= 0          ? (i < 2 ? synth_page(e, i) : SE[i - 2])
+                                         : is_midi(track)  ? MIDI[i % 3]
+                                                           : DRUM[i & 1];
 }
 
 static void pick_knobs(int *k) {
@@ -243,12 +269,12 @@ static void pick_knobs(int *k) {
   static const uint8_t DRUM_MORE[4] = {P_MACHINE, P_VOICE, P_EXTRA, P_SEND};
   static const uint8_t SYN_STEP[4] = {P_STEP, P_STVOICE, P_STACC, P_MACHINE}; /* SLIDE: the SEL button */
   static const uint8_t SE[5][4] = {{P_SE0, P_SE1, P_SE2, P_SE3}, {P_SE4, P_SE5, P_SE6, P_SE7}, {P_ATK, P_DEC, P_SUS, P_REL}, {P_PRESET, P_FENV, P_LEVEL, P_SEND}, {P_GATE, P_MONO, P_SLIDE, P_TUNE}};
-  static const uint8_t MIX[4] = {P_LEVEL, P_SEND, P_MUTE, P_DRIVE};
-  static const uint8_t FX[4] = {P_SEND, P_DTIME, P_DFDBK, P_DRIVE};
+  static const uint8_t MIX[4] = {P_LEVEL, P_SEND, P_RSEND, P_MUTE};
+  static const uint8_t FX[4][4] = {{P_SEND, P_RSEND, P_CSEND, P_DUCK}, {P_DTIME, P_DFDBK, P_RSIZE, P_RDAMP}, {P_CRATE, P_CDEPTH, P_PUMP, P_NONE}, {P_FILTER, P_RESO, P_DRIVE, P_DTYPE}};
   static const uint8_t GLOBAL[2][4] = {{P_BPM, P_SWING, P_LENGTH, P_THEME}, {P_CLOCK, P_NONE, P_NONE, P_NONE}};
   static const uint8_t MIDI[3][4] = {{P_MCH, P_PROG, P_GATE, P_VELO}, {P_CC0, P_CC1, P_CC2, P_CC3}, {P_CCN0, P_CCN1, P_CCN2, P_CCN3}};
   const uint8_t *src = page == PG_MIX                              ? MIX
-                       : page == PG_FX                             ? FX
+                       : page == PG_FX                             ? FX[sub & 3]
                        : page == PG_GLOBAL                         ? GLOBAL[sub & 1]
                        : is_midi(track) && page == PG_SOUND        ? MIDI[sub % 3]
                        : engine_of(track) >= 0 && page == PG_SOUND ? SE[sub % 5]
@@ -281,6 +307,28 @@ static uint8_t *pbyte(int id) { /* the byte behind a parameter, if it is one */
       return &d->extra;
     case P_SEND:
       return &d->send;
+    case P_RSEND:
+      return &d->rsend;
+    case P_CSEND:
+      return &d->csend;
+    case P_DUCK:
+      return &d->duck;
+    case P_RSIZE:
+      return &song.rsize;
+    case P_RDAMP:
+      return &song.rdamp;
+    case P_CRATE:
+      return &song.crate;
+    case P_CDEPTH:
+      return &song.cdepth;
+    case P_PUMP:
+      return &song.pump;
+    case P_FILTER:
+      return &song.filter;
+    case P_RESO:
+      return &song.reso;
+    case P_DTYPE:
+      return &song.dtype;
     case P_SLIDE:
       return &d->slide;
     case P_ATK:
@@ -405,6 +453,10 @@ static void pset(int id, int v) {
 static void pformat(int id, int v, char *out) {
   const char *s = 0;
   int n;
+  if (id == P_DUCK && !track) { /* track 1 is what ducks the others */
+    out[0] = 'K', out[1] = 'E', out[2] = 'Y', out[3] = 0;
+    return;
+  }
   switch (PARAM[id].fmt) {
     case F_SEMI:
       n = (v - 64) * 12 / 64;
@@ -462,6 +514,17 @@ static void pformat(int id, int v, char *out) {
       }
       format_int(out, v - 1);
       return;
+    case F_FILTER: /* LP or HP and how far, OFF in the middle */
+      if (v == 64) {
+        s = "OFF";
+        break;
+      }
+      out[0] = v < 64 ? 'L' : 'H', out[1] = 'P', out[2] = ' ';
+      format_int(out + 3, v < 64 ? 64 - v : v - 64);
+      return;
+    case F_DIST:
+      s = DIST_NAME[v % DISTS];
+      break;
     case F_NONE:
       out[0] = 0;
       return;
@@ -758,20 +821,83 @@ static void draw_strip(int t) {
   }
 }
 
-/* ---- FX: the echoes */
+/* ---- FX: what each tab's knobs do, drawn */
 static void draw_fx(void) {
-  rect(0, BODY_Y, SCREEN_W, BODY_H, th->bg);
-  text(8, 30, "DELAY", th->dim, FONT_SMALL);
-  for (int s = 0; s < STEPS; s++) {
-    rect(8 + s * 14, 172, 12, 3, (s & 3) ? th->off : th->beat);
+  rect(0, BODY_Y, SCREEN_W, 160 - BODY_Y, th->bg);
+  if (sub == 0) { /* SENDS: every track's three sends and its ducking */
+    static const char *const ROW[4] = {"DLY", "REV", "CHO", "DCK"};
+    for (int r = 0; r < 4; r++) {
+      int y = 34 + r * 30;
+      text(8, y + 4, ROW[r], th->dim, FONT_SMALL);
+      for (int t = 0; t < TRACKS; t++) {
+        const track_t *d = &song.track[t];
+        int v = r == 0 ? d->send : r == 1 ? d->rsend
+                               : r == 2   ? d->csend
+                               : t        ? d->duck
+                                          : 0,
+            h = v * 24 / 127, x = 44 + t * 21;
+        rect(x, y, 18, 24 - h, th->off);
+        rect(x, y + 24 - h, 18, h, r == 3 && !t ? th->off : tcolor(t));
+        if (t == track) {
+          rect(x, y + 25, 18, 2, th->text);
+        }
+      }
+    }
+  } else if (sub == 1) { /* SPACE: the echoes, and the reverb's tail */
+    text(8, 30, "DELAY", th->dim, FONT_SMALL);
+    for (int s = 0; s < STEPS; s++) {
+      rect(8 + s * 14, 96, 12, 2, (s & 3) ? th->off : th->beat);
+    }
+    int h = 48;
+    rect(8, 94 - h, 10, h, th->text);
+    h = h * 3 / 4;
+    for (int s = song.dtime; s < STEPS && h > 1; s += song.dtime) {
+      rect(8 + s * 14, 94 - h, 10, h, th->accent);
+      h = h * song.dfdbk * 230 >> 15;
+    }
+    text(8, 104, "REVERB", th->dim, FONT_SMALL);
+    int len = 40 + song.rsize * 180 / 127, dk = 256 - (12000 / len); /* how long it rings; DAMP darkens it */
+    uint16_t c = song.rdamp > 80 ? th->dim : th->accent;
+    for (int x = 0, a = 30 << 8; x < 224 && a > 255; x += 3, a = a * dk >> 8) {
+      rect(8 + x, 152 - (a >> 8), 2, a >> 8, c);
+    }
+  } else if (sub == 2) { /* MOTION: the chorus's sweep, and how a duck comes back */
+    text(8, 30, "CHORUS", th->dim, FONT_SMALL);
+    int per = 200 - song.crate * 180 / 127, amp = 2 + song.cdepth * 18 / 127;
+    for (int x = 0; x < 224; x++) {
+      int p = x % per, tri = p < per / 2 ? p * 4 * amp / per - amp : (per - p) * 4 * amp / per - amp;
+      rect(8 + x, 70 - tri, 1, 2, th->accent);
+    }
+    text(8, 100, "DUCK", th->dim, FONT_SMALL);
+    int back = 4 + song.pump * 52 / 127; /* pixels to come back, per beat of 56 */
+    for (int x = 0; x < 224; x++) {
+      int p = x % 56, g = p >= back ? 40 : 4 + p * 36 / back;
+      rect(8 + x, 152 - g, 1, g, (x % 56) < 2 ? tcolor(0) : th->off);
+    }
+  } else { /* MASTER: the filter's shape, and what the distortion does to a wave */
+    text(8, 30, "FILTER", th->dim, FONT_SMALL);
+    int f = song.filter, cut = f < 64 ? 4 + f * 100 / 63 : 4 + (f - 65) * 100 / 62, bump = song.reso * 20 / 127;
+    for (int x = 0; x < 108; x++) {
+      int d = f < 64 ? x - cut : cut - x, g = f == 64 ? 60 : d <= 0 ? 60
+                                                                    : 60 - d * 2;
+      if (f != 64 && d > -10 && d <= 0) {
+        g += bump * (10 + d) / 10;
+      }
+      g = g < 1 ? 1 : g > 84 ? 84
+                             : g;
+      rect(8 + x, 150 - g, 1, g, th->accent);
+    }
+    text(128, 30, DIST_NAME[song.dtype % DISTS], th->dim, FONT_SMALL);
+    rect(128, 101, 104, 1, th->off);
+    for (int x = 0; x < 104; x++) {
+      int32_t y = fx_curve((x - 52) * 32767 / 52);
+      int yy = (y < -49151 ? -49151 : y > 49151 ? 49151
+                                                : y) *
+               48 / 49151;
+      rect(128 + x, 101 - yy, 2, 2, th->text);
+    }
   }
-  int h = 120, x = 8;
-  rect(x, 170 - h, 10, h, th->text);
-  h = h * 3 / 4;
-  for (int s = song.dtime; s < STEPS && h > 1; s += song.dtime) {
-    rect(8 + s * 14, 170 - h, 10, h, th->accent);
-    h = h * song.dfdbk * 230 >> 15;
-  }
+  draw_tabs();
 }
 
 /* ---- GLOBAL: the tempo, the theme, the load */
@@ -915,7 +1041,9 @@ static void changed(int id) { /* a parameter changed: show it where it shows (an
     }
   } else if (page == PG_MIX) {
     draw_strip(track);
-  } else if (page == PG_SOUND || page == PG_FX || page == PG_GLOBAL) {
+  } else if (page == PG_FX) {
+    draw_fx();
+  } else if (page == PG_SOUND || page == PG_GLOBAL) {
     if (id != P_LEVEL && id != P_SEND && id != P_DRIVE) {
       draw_body();
     }
@@ -1145,6 +1273,17 @@ static void note_steps(pattern_t *p, int t, const uint8_t *notes, const char *s)
   }
 }
 
+static void fx_defaults(void) {
+  song.rsize = 80;
+  song.rdamp = 50;
+  song.crate = 20;
+  song.cdepth = 60;
+  song.pump = 40;
+  song.filter = 64;
+  song.reso = 20;
+  song.dtype = D_SOFT;
+}
+
 static void default_song(void) {
   /* a machine per track (a ROM one if it is built in, else the modeled one after it) */
   static const char *const MACHINE[TRACKS][2] = {{"909", "909"}, {"808", "808"}, {"909", "909"}, {"707", "CR78"}, {"DMX", "808"}, {"SDS", "SDS"}, {"606", "CR78"}, {"ANALOG", "ANALOG"}, {"ANALOG", "ANALOG"}};
@@ -1162,6 +1301,7 @@ static void default_song(void) {
   song.dtime = 3;
   song.dfdbk = 60;
   song.drive = 24;
+  fx_defaults();
   for (int t = 0; t < TRACKS; t++) {
     track_t *d = &song.track[t];
     d->machine = (uint8_t)machine_find(MACHINE[t][0], machine_find(MACHINE[t][1], 0));
@@ -1237,7 +1377,13 @@ void setup(void) {
     black_of[k] = IS_BLACK[k % 12] ? (int8_t)b++ : -1;
   }
   if (settings_load(&song, sizeof song) || song.version != SONG_VERSION) {
-    default_song();
+    /* a version 6 song: the same, without the effects at the end */
+    if (!settings_load(&song, (uint32_t) __builtin_offsetof(song_t, rsize)) && song.version == 6) {
+      song.version = SONG_VERSION;
+      fx_defaults();
+    } else {
+      default_song();
+    }
   }
   sanitize();
   engine_tempo();
@@ -1351,6 +1497,8 @@ void loop(void) {
       draw_sound();
     } else if (page == PG_GLOBAL) {
       draw_global();
+    } else if (page == PG_FX) {
+      draw_fx();
     }
   }
   if (button_pressed(BTN_PLAY)) {

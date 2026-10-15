@@ -22,6 +22,9 @@ def main():
   ms = [10000 ** (v / 127) for v in range(128)]
   env_lin = [max(1, int((1 << 24) * 32 / (m * FS / 1000))) for m in ms]
   env_exp = [max(1, min(65535, int(65536 * (1 - math.exp(-32 / (m / 1000 / 4.6 * FS)))))) for m in ms]
+  # the master filter (engine.c): tan(pi fc / fs), Q16. 0..63 low-pass 80 Hz .. 16 kHz, 65..127 high-pass 25 Hz .. 8 kHz
+  fc = [80 * 200 ** (v / 63) for v in range(64)] + [0] + [25 * 320 ** ((v - 65) / 62) for v in range(65, 128)]
+  filt_g = [round(math.tan(math.pi * f / FS) * 65536) for f in fc]
   OUT.write_text(
     "/* made by tools/tables.py: do not edit */\n#ifndef TABLES_H\n#define TABLES_H\n#include <stdint.h>\n\n"
     "/* 2^(n/12), Q16 */\n"
@@ -29,6 +32,8 @@ def main():
     + "\n/* Felucca's envelope (src/synths.c, VOICE): attack step a block, Q24; decay / release coefficient, Q16 */\n"
     + table("ENV_LIN", "uint32_t", env_lin)
     + table("ENV_EXP", "uint16_t", env_exp)
+    + "\n/* the master filter's cutoff: tan(pi fc / fs), Q16; 0..63 low-pass, 64 off, 65..127 high-pass */\n"
+    + table("FILT_G", "uint32_t", filt_g)
     + "\n#endif\n"
   )
 

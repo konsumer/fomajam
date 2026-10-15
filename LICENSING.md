@@ -29,6 +29,8 @@ versions.
 STRING (`src/eng_string.h`) and SUPERSAW (`src/eng_supersaw.h`) are FOMAJAM's own. SUPERSAW's detune and mix curves
 follow Adam Szabo's published measurements of the Roland JP-8000 ("How to Emulate the Super Saw", 2010).
 
+The reverb in `src/fx.c` uses the delay lengths and structure of Jezar's Freeverb, which is public domain.
+
 ## Third-party material
 
 | What                                                                                      | License     | Where                                           |

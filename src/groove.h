@@ -6,7 +6,7 @@
 #define TRACKS 9 /* each plays one machine: a drum machine, or a synth engine */
 #define STEPS 16
 #define PATTERNS 8
-#define SONG_VERSION 6
+#define SONG_VERSION 7
 
 /* a step: what plays (a drum machine's voice, or a synth's MIDI note) and how */
 #define STEP_ON 1
@@ -21,9 +21,10 @@ static const uint8_t RATCHET[8] = {1, 2, 3, 4, 6, 8, 8, 8};
 /* a track. Every knob value is 0..127 (64 = as the machine has it) unless said otherwise */
 typedef struct {
   uint8_t machine, voice; /* voice: what new steps get (a drum voice, or a synth's note) */
-  uint8_t level, send;
+  uint8_t level, send; /* send: to the delay */
   uint8_t tune, decay, tone, extra;     /* a drum machine's (a synth: TUNE) */
-  uint8_t slide, spare[3];              /* a synth's glide */
+  uint8_t slide;                        /* a synth's glide */
+  uint8_t rsend, csend, duck;           /* sends to the reverb and the chorus; how much track 1 ducks it */
   int8_t e[8];                          /* a synth engine's own parameters (synth_param) */
   uint8_t atk, dec, sus, rel;           /* its envelope */
   int8_t fenv;                          /* its envelope's sweep of the filter, -64..63 */
@@ -45,6 +46,12 @@ typedef struct {
   uint8_t pattern, clock; /* clock: 1 sends MIDI clock (and start / stop) */
   track_t track[TRACKS];
   pattern_t pat[PATTERNS];
+  /* (added in version 7: a version 6 song loads without them) */
+  uint8_t rsize, rdamp;   /* the reverb */
+  uint8_t crate, cdepth;  /* the chorus */
+  uint8_t pump;           /* how fast a ducked track comes back */
+  uint8_t filter, reso;   /* the master filter: 0..63 low-pass, 64 off, 65..127 high-pass */
+  uint8_t dtype;          /* the distortion's kind (D_*); DRIVE is song.drive */
 } song_t;
 
 _Static_assert(sizeof(song_t) <= SETTINGS_MAX, "the song must fit in the settings");
@@ -100,9 +107,28 @@ void synth_load(int t, int p); /* preset p of track t's engine into song.track[t
 /* between engine.c and drums.c / synths.c */
 void synths_note(int t, int note, int vel, int slide, int32_t gate); /* gate: frames, -1 held */
 void synths_off(int t, int note);
-void synths_render(int t, int32_t *mix, int32_t *snd, uint32_t n); /* n: CTL (32) frames */
+void synths_render(int t, int32_t *out, uint32_t n); /* track t, at its level; n: CTL (32) frames */
 void synths_stop(void);
 void drums_hit(int t, int v, int vel);
-void drums_render(int32_t *mix, int32_t *snd, uint32_t n);
+void drums_render(int t, int32_t *out, uint32_t n); /* track t's drums, at its level */
+
+/* ---- the effects (fx.c), run by audio() */
+enum { D_SOFT,
+       D_HARD,
+       D_TUBE,
+       D_DIODE,
+       D_FUZZ,
+       D_FOLD,
+       D_WAVE,
+       D_RECT,
+       D_BITS,
+       D_RATE,
+       D_CRUSH,
+       DISTS };
+extern const char *const DIST_NAME[DISTS];
+void fx_reverb(const int32_t *in, int32_t *out, uint32_t n); /* adds what in sends it to out */
+void fx_chorus(const int32_t *in, int32_t *out, uint32_t n);
+void fx_master(int32_t *x, uint32_t n); /* the filter and the distortion, in place */
+int32_t fx_curve(int32_t x);            /* the distortion as it is set, for the screen */
 
 #endif

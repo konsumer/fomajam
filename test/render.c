@@ -70,13 +70,12 @@ static void wav(const char *path, const int16_t *x, uint32_t n) {
 static int32_t buf[LEN];
 
 static void hit(int m, int v, int32_t *peak, uint32_t *tail, int bad[1]) {
-  static int32_t snd[256];
   memset(&song, 0, sizeof song);
   song.track[0] = (track_t){(uint8_t)m, (uint8_t)v, 127, 0, 64, 64, 64, 64};
   drums_hit(0, v, 127);
   memset(buf, 0, sizeof buf);
   for (uint32_t i = 0; i < LEN; i += 256) {
-    drums_render(buf + i, snd, 256);
+    drums_render(0, buf + i, 256);
   }
   *peak = 0;
   *tail = 0;
@@ -137,7 +136,6 @@ int main(int argc, char **argv) {
   }
   if (!strcmp(mode, "--synths")) { /* a note held 0.6 s, then 7.4 s to die away (a pad's release is long) */
     int fails = 0;
-    static int32_t snd[32];
 #define SLEN (44100 * 8)
     static int32_t sb[SLEN];
     for (int m = 0; m < machine_count(); m++) {
@@ -156,7 +154,7 @@ int main(int argc, char **argv) {
           if (i == 32) {
             synths_note(0, 57, 100, 0, 44100 * 6 / 10);
           }
-          synths_render(0, sb + i, snd, 32);
+          synths_render(0, sb + i, 32);
         }
         for (uint32_t i = 0; i < SLEN; i++) {
           int32_t a = abs(sb[i]);

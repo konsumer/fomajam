@@ -1,5 +1,5 @@
-/* FOMAJAM's sound: the step sequencer, MIDI out, the delay and the output. The drum machines are in drums.c
- * and the synth engines in synths.c. Everything runs in 32-frame blocks (as Felucca's engines do), and steps
+/* FOMAJAM's sound: the step sequencer, MIDI out, the mix (sends and ducking), the delay and the output. The
+ * drum machines are in drums.c, the synth engines in synths.c, and the other effects in fx.c. Everything runs in 32-frame blocks (as Felucca's engines do), and steps
  * start on a block boundary. This code runs in audio(): integers only, no screen, no flash.
  *
  * audio() is the only place that sends MIDI, because the USB queue allows only one writer. It sends MIDI
@@ -185,16 +185,43 @@ static void clock_tick(uint32_t n) { /* send the step's other five clock ticks w
   }
 }
 
-/* ---- the delay and the output */
+/* ---- the mix: each track at its level, into the dry mix and the sends. Track 1 ducks the others */
 #define DLINE 44100
 static int16_t dline[DLINE] POOL;
 static uint32_t dpos;
-static int32_t mix[256], snd[256];
+static int32_t mix[256], snd[256], rsnd[256], csnd[256];
+static int32_t duck_env; /* how loud track 1 is, Q15 */
 
 static void render(uint32_t at, uint32_t n) {
-  drums_render(mix + at, snd + at, n);
+  int32_t x[32], duck[32];
+  int32_t rel = 12896 / (16 + song.pump * 12 / 5); /* Q20 a frame: back in ~ 30 .. 600 ms */
   for (int t = 0; t < TRACKS; t++) {
-    synths_render(t, mix + at, snd + at, n); /* (it notices a track that stopped being one) */
+    const track_t *d = &song.track[t];
+    for (uint32_t i = 0; i < n; i++) {
+      x[i] = 0;
+    }
+    drums_render(t, x, n);
+    synths_render(t, x, n); /* (it notices a track that stopped being one) */
+    if (!t) {
+      for (uint32_t i = 0; i < n; i++) {
+        int32_t a = x[i] < 0 ? -x[i] : x[i];
+        a = a > 16384 ? 32767 : a * 2;
+        duck_env += a > duck_env ? (a - duck_env) >> 4 : -(int32_t)(((int64_t)duck_env * rel) >> 20) - 1;
+        duck_env = duck_env < 0 ? 0 : duck_env;
+        duck[i] = duck_env;
+      }
+    } else if (d->duck) {
+      for (uint32_t i = 0; i < n; i++) {
+        x[i] = (int32_t)(((int64_t)x[i] * (32768 - duck[i] * d->duck / 127)) >> 15);
+      }
+    }
+    int32_t ds = d->send * 258 >> 4, rs = d->rsend * 258 >> 4, cs = d->csend * 258 >> 4;
+    for (uint32_t i = 0; i < n; i++) {
+      mix[at + i] += x[i];
+      snd[at + i] += x[i] * ds >> 11;
+      rsnd[at + i] += x[i] * rs >> 11;
+      csnd[at + i] += x[i] * cs >> 11;
+    }
   }
 }
 
@@ -206,7 +233,7 @@ void audio(int32_t *out, uint32_t frames) {
     frames = 256;
   }
   for (uint32_t i = 0; i < frames; i++) {
-    mix[i] = snd[i] = 0;
+    mix[i] = snd[i] = rsnd[i] = csnd[i] = 0;
   }
   while (q_tail != q_head) {
     uint8_t q = q_tail;
@@ -273,16 +300,22 @@ void audio(int32_t *out, uint32_t frames) {
     m_tick(n);
     render(i, n);
   }
-  int32_t fb = song.dfdbk * 230, drive = 128 + song.drive * 6;
+  int32_t fb = song.dfdbk * 230;
   uint32_t dl = dlen;
-  for (uint32_t i = 0; i < frames; i++) {
+  for (uint32_t i = 0; i < frames; i++) { /* the delay */
     uint32_t r = dpos >= dl ? dpos - dl : dpos + DLINE - dl;
     int32_t wet = dline[r];
     dline[dpos] = (int16_t)clamp(snd[i] + (wet * fb >> 15), -32767, 32767);
     if (++dpos == DLINE) {
       dpos = 0;
     }
-    int32_t v = clamp((mix[i] + (wet * 3 >> 2)) * drive >> 8, -49151, 49151);
+    mix[i] += wet * 3 >> 2;
+  }
+  fx_reverb(rsnd, mix, frames);
+  fx_chorus(csnd, mix, frames);
+  fx_master(mix, frames); /* the filter and the distortion */
+  for (uint32_t i = 0; i < frames; i++) {
+    int32_t v = clamp(mix[i], -49151, 49151);
     int32_t y = v - (int32_t)((((((int64_t)v * v) >> 15) * v >> 15) * 4855) >> 15); /* soft clip */
     out[2 * i] += y;
     out[2 * i + 1] += y;
