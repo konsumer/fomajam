@@ -122,54 +122,9 @@ notes, so a synth listening on channels 1–10 or 16 also receives those CCs.
 ## Plugging a USB controller straight in: a USB MIDI host box
 
 The FM-1's USB port only connects to a computer: the FM-1 is a USB _device_, and so is a USB controller, and two
-devices can't talk to each other. A small box that is a USB _host_ fixes that. Plug a USB hub into it, and the FM-1
-and your controllers into the hub. Everything any of them sends goes to all of the others, so a controller plays and
-edits the FM-1, the FM-1's CC OUT reaches the controller's lights, and a USB synth on the hub can play the FM-1's MIDI
-tracks. There's nothing to set up: no routing, no commands.
+devices can't talk to each other. A small box that is a USB _host_ fixes that: plug a USB hub into it, and the FM-1
+and your controllers into the hub, and everything any of them sends goes to all of the others. There's nothing to set
+up.
 
-Two ways to build one, both from ready-made parts and with no soldering:
-
-|                      | A: Feather (recommended)                             | B: Raspberry Pi                                                                                         |
-| -------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| Board                | Adafruit Feather RP2040 with USB Type A Host (#5723) | Raspberry Pi Zero 2 W (or any Raspberry Pi with USB-A)                                                  |
-| Also needed          | a USB hub; a USB-C charger or power bank             | a USB OTG adapter (micro-USB to USB-A), a powered USB hub, a 5 V 2.5 A micro-USB supply, a microSD card |
-| Setup                | drag one file onto it                                | install Raspberry Pi OS, run one command                                                                |
-| Ready after power-on | under a second                                       | about 30 seconds                                                                                        |
-| Devices              | up to 4 on the hub                                   | as many as the hub has ports                                                                            |
-
-Either way you also need the cables you already have: one for the FM-1 (USB-A to USB-C) and one for each controller.
-
-### A: Adafruit Feather RP2040 with USB Type A Host
-
-The board has a USB-A socket for devices and powers it (up to 500 mA). Its USB-C socket is only for power and for
-loading the firmware.
-
-1. Get `fomajam-usbhost.uf2`: from the [latest release](https://github.com/konsumer/fomajam/releases/latest), from
-   [the site](https://konsumer.js.org/fomajam/fomajam-usbhost.uf2), or build it with `tools/usbhost/build.sh` (needs
-   Docker).
-2. Hold the board's **BOOT** button while you plug its USB-C into a computer. A drive called `RPI-RP2` appears.
-3. Drag `fomajam-usbhost.uf2` onto it. The drive disappears; the box is ready. (You only do this once.)
-4. Plug the hub into the USB-A socket, and the FM-1 and your controllers into the hub. Power the board's USB-C from a
-   charger or power bank (or a computer).
-
-The red LED blinks when MIDI passes through. If a device keeps dropping out, it needs more power than the board gives:
-use a hub with its own power supply. The code is in `tools/usbhost/` (`main.c`, about 60 lines).
-
-### B: Raspberry Pi
-
-1. Use Raspberry Pi Imager to put **Raspberry Pi OS Lite** on the microSD card. In its settings, set a user name and
-   password, your Wi-Fi, and turn on SSH.
-2. Start the Pi, connect to it with `ssh`, and run:
-
-   ```sh
-   curl -fsSL https://raw.githubusercontent.com/konsumer/fomajam/main/tools/usbhost/pi-setup.sh | sudo sh
-   ```
-
-3. Plug the OTG adapter into the Zero's **USB** port (not PWR), the powered hub into the adapter, and the FM-1 and
-   your controllers into the hub. Power the Pi from its PWR port.
-
-From then on it starts by itself whenever the Pi is powered. It checks every 2 seconds for devices that came or went
-(`tools/usbhost/pi-setup.sh` is the whole thing). Wi-Fi is only needed for setup.
-
-**Avoid loops:** if a controller sends back everything it receives ("MIDI thru" or "echo" in its settings), turn
-that off, or messages go round in circles.
+How to build one (an Adafruit Feather RP2040 with USB Type A Host, or a Raspberry Pi) is in
+[fm1buddy](https://github.com/konsumer/fm1buddy), which can also switch the FM-1's firmware from an SD card.

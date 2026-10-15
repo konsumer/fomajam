@@ -10,7 +10,7 @@ receives a firmware built from this project is also entitled to its source code.
 | `platform/hal/`, `platform/loader/`, `platform/src/`, `platform/crt0.S`, `platform/app.ld`, `tools/fm1pkg_make.py`, `tools/lz4blk.py`, `web/fm1ota.js`, `web/fm1pkg.js`, the FM-1 parts of `tools/build.py` | Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments ([Felucca](https://github.com/hugelton/Felucca)), including the changes made by [SLOOP](https://github.com/isod89/sloop-fm1) (isod89), as carried by [Dinghy](https://github.com/zvenson/dinghy) (zvenson) and [X0X](https://github.com/charlesvestal/fm1-x0x) (Charles Vestal) |
 | `platform/fm1.c`                                                                                                                                                                                            | Based on Dinghy's `platform.c` (zvenson), adapted to `fm1.h`                                                                                                                                                                                                                                                                                          |
 | `platform/fm1.h`, `platform/common.c`, `platform/web.c`, `web/` (the page and the emulator), `fm1`                                                                                                          | [foma](https://github.com/konsumer/foma)                                                                                                                                                                                                                                                                                                              |
-| `src/`, `tools/drums.py`, `tools/roms.py`, `tools/samples.py`, `tools/tables.py`, `tools/usbhost/`, `test/`, `firmware.json`, and FOMAJAM's changes to the files above                                      | FOMAJAM's authors                                                                                                                                                                                                                                                                                                                                     |
+| `src/`, `tools/drums.py`, `tools/roms.py`, `tools/samples.py`, `tools/tables.py`, `test/`, `firmware.json`, and FOMAJAM's changes to the files above                                                        | FOMAJAM's authors                                                                                                                                                                                                                                                                                                                                     |
 
 The modeled drum machines (`tools/drums.py`, the `src/drums.h` it generates, and `src/drums.c`) are ported from
 trommelsynthesizer in [poketrack](https://github.com/konsumer/poketrack) (zlib license), by the same author.
@@ -38,11 +38,6 @@ The reverb in `src/fx.c` uses the delay lengths and structure of Jezar's Freever
 | Terminus font (ter-u16n), rendered into `platform/gen/felucca_font.h`                     | SIL OFL 1.1 | `platform/gen/Terminus-LICENSE.txt`             |
 | `platform/sdk/uboot.boot`, `cfg_tool.bin`, `eq_cfg_hw.bin` from JieLi's AC79NN_SDK_V1.2.1 | Apache-2.0  | <https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK> |
 | JieLi's toolchain, downloaded into the Docker image                                       | JieLi's     | <https://pkgman.jieliapp.com/s/linux-toolchain> |
-
-## The USB MIDI host box
-
-`fomajam-usbhost.uf2` (CC.md) is built from `tools/usbhost/` with the Raspberry Pi Pico SDK (BSD-3-Clause), TinyUSB
-(MIT) and Pico-PIO-USB (MIT), which `tools/usbhost/build.sh` downloads. Their license notices apply to that file.
 
 ## The ROM drum machine recordings
 
