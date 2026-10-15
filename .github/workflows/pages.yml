@@ -19,7 +19,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: ./fm1 build
       - uses: actions/upload-pages-artifact@v3
-        if: github.event_name != 'pull_request'
+        if: github.ref == 'refs/heads/main'
         with:
           path: build/web
       - uses: actions/upload-artifact@v4
@@ -34,7 +34,7 @@ jobs:
           fail_on_unmatched_files: true
   deploy:
     needs: build
-    if: github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
