@@ -191,6 +191,17 @@ RED, ORANGE, TEAL), plus WHITE (a light screen) and NEON. `THEME` on the GLOBAL 
 A theme is about a dozen colors; add one to the file and it appears on the GLOBAL page. The eight track colors also
 color the drum voices: kicks use the first, snares the second, claps the third, closed hi-hats the fourth, and so on.
 
+## USB audio
+
+Over one USB cable, the FM-1 is a class-compliant audio and MIDI device. It needs no driver on a computer, an iPad
+or a phone.
+
+- **Audio from the FM-1:** a 44.1 kHz (or 48 kHz) stereo input on the computer, so you can record what you hear.
+- **Audio to the FM-1:** a 44.1 kHz stereo output. Pick the FM-1 as the output on your computer or iPad, and its
+  sound plays through the FM-1 mixed with the FM-1's own. The MASTER knob sets the volume of both. It is not sent
+  back on the FM-1's audio input, so recording that input doesn't capture what you're playing to it.
+- **MIDI in and out:** see above.
+
 ## Key lights
 
 `LIGHTS` on the GLOBAL page's SETUP page (press `SEL`) dimly lights every key and button so the labels are easy to
