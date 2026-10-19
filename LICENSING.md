@@ -29,6 +29,10 @@ versions.
 STRING (`src/eng_string.h`) and SUPERSAW (`src/eng_supersaw.h`) are FOMAJAM's own. SUPERSAW's detune and mix curves
 follow Adam Szabo's published measurements of the Roland JP-8000 ("How to Emulate the Super Saw", 2010).
 
+The USB audio output in `platform/src/usb.c` (`FELUCCA_UAC_OUT`) is ported from
+[felucca-bsp](https://github.com/hugelton/felucca-bsp) (commit 5758857, MPL-2.0, by Leo Kuroshita), whose license lets
+it be used under GPL-3.0; FOMAJAM's version uses integer math.
+
 The reverb in `src/fx.c` uses the delay lengths and structure of Jezar's Freeverb, which is public domain.
 
 ## Third-party material

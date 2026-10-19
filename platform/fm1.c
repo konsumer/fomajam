@@ -49,6 +49,7 @@ static volatile uint32_t fm1_ms; /* milliseconds since power-on (TIMER5) */
 #define FELUCCA_OTA 1
 #define FELUCCA_CDC 0
 #define FELUCCA_UAC 1
+#define FELUCCA_UAC_OUT 1 /* a computer or tablet plays through the FM-1 too */
 #include "usb.c"
 
 /* ---- flash: read anywhere; erase / program only the update's staging area and the settings sector */
@@ -315,6 +316,7 @@ void fm1_alnk0_irq(void) { /* via isr_alnk0 (hal/fm1_isr.S) */
     for (b = 0; b < HALF_FRAMES; b += 32u) {
       uac_tap(o + 2u * b, 32u); /* the computer records what the speaker plays */
     }
+    uac_play(o, HALF_FRAMES, master_q12); /* and plays through it (after the tap: never sent back) */
     for (i = 0; i < HALF_WORDS; i++) {
       o[i] <<= 7;
     }
