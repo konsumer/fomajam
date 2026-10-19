@@ -338,6 +338,7 @@ function onFrame(m) {
   if (m.fb) drawScreen(m.fb)
   keys.forEach((el, i) => el.classList.toggle('lit', !!(m.keys & (1 << i))))
   buttons.forEach((el, i) => el.classList.toggle('lit', !!(m.buttons & (1 << i))))
+  for (const el of [...keys, ...buttons]) el.dataset.backlight = m.backlight || 0
   if (m.store) saveStore(m.store)
   if (m.log) for (const l of m.log.replace(/\n$/, '').split('\n')) say(l)
   if (m.midi && midiOut) for (const p of m.midi) midiOut.send(midiBytes(p))

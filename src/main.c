@@ -59,6 +59,7 @@ enum { F_NUM,
        F_PROG,
        F_FILTER,
        F_DIST,
+       F_LIGHTS,
        F_NONE };
 enum { P_TUNE,
        P_DECAY,
@@ -121,6 +122,7 @@ enum { P_TUNE,
        P_RESO,
        P_DTYPE,
        P_CCOUT,
+       P_LIGHTS,
        P_NONE, /* an empty knob */
        PARAMS };
 static const struct {
@@ -188,6 +190,7 @@ static const struct {
     [P_RESO] = {"RESO", 0, 127, F_NUM},
     [P_DTYPE] = {"TYPE", 0, DISTS - 1, F_DIST},
     [P_CCOUT] = {"CC OUT", 0, 1, F_ONOFF},
+    [P_LIGHTS] = {"LIGHTS", 0, 2, F_LIGHTS},
     [P_NONE] = {"", 0, 0, F_NONE},
 };
 
@@ -260,7 +263,7 @@ static int subpages(void) {
 
 static const char *subpage_name(int i) { /* the tabs on the SOUND and GLOBAL pages */
   static const char *const DRUM[2] = {"PLAY", "MORE"}, *const SE[3] = {"ENV", "PATCH", "PLAY"}, *const MIDI[3] = {"NOTE", "CC", "CC#"},
-                           *const GLOBAL[2] = {"TEMPO", "MIDI"}, *const FX[4] = {"SENDS", "SPACE", "MOTION", "MASTER"};
+                           *const GLOBAL[2] = {"TEMPO", "SETUP"}, *const FX[4] = {"SENDS", "SPACE", "MOTION", "MASTER"};
   int e = engine_of(track);
   return page == PG_GLOBAL ? GLOBAL[i & 1] : page == PG_FX ? FX[i & 3]
                                          : e >= 0          ? (i < 2 ? synth_page(e, i) : SE[i - 2])
@@ -276,7 +279,7 @@ static void pick_knobs(int *k) {
   static const uint8_t SE[5][4] = {{P_SE0, P_SE1, P_SE2, P_SE3}, {P_SE4, P_SE5, P_SE6, P_SE7}, {P_ATK, P_DEC, P_SUS, P_REL}, {P_PRESET, P_FENV, P_LEVEL, P_SEND}, {P_GATE, P_MONO, P_SLIDE, P_TUNE}};
   static const uint8_t MIX[4] = {P_LEVEL, P_SEND, P_RSEND, P_MUTE};
   static const uint8_t FX[4][4] = {{P_SEND, P_RSEND, P_CSEND, P_DUCK}, {P_DTIME, P_DFDBK, P_RSIZE, P_RDAMP}, {P_CRATE, P_CDEPTH, P_PUMP, P_NONE}, {P_FILTER, P_RESO, P_DRIVE, P_DTYPE}};
-  static const uint8_t GLOBAL[2][4] = {{P_BPM, P_SWING, P_LENGTH, P_THEME}, {P_CLOCK, P_CCOUT, P_NONE, P_NONE}};
+  static const uint8_t GLOBAL[2][4] = {{P_BPM, P_SWING, P_LENGTH, P_THEME}, {P_CLOCK, P_CCOUT, P_LIGHTS, P_NONE}};
   static const uint8_t MIDI[3][4] = {{P_MCH, P_PROG, P_GATE, P_VELO}, {P_CC0, P_CC1, P_CC2, P_CC3}, {P_CCN0, P_CCN1, P_CCN2, P_CCN3}};
   const uint8_t *src = page == PG_MIX || page >= PG_SCOPE          ? MIX
                        : page == PG_FX                             ? FX[sub & 3]
@@ -336,6 +339,8 @@ static uint8_t *pbyte(int id) { /* the byte behind a parameter, if it is one */
       return &song.dtype;
     case P_CCOUT:
       return &song.ccout;
+    case P_LIGHTS:
+      return &song.lights;
     case P_SLIDE:
       return &d->slide;
     case P_ATK:
@@ -532,6 +537,11 @@ static void pformat(int id, int v, char *out) {
     case F_DIST:
       s = DIST_NAME[v % DISTS];
       break;
+    case F_LIGHTS: {
+      static const char *const LIGHTS[3] = {"OFF", "LOW", "FULL"};
+      s = LIGHTS[v % 3];
+      break;
+    }
     case F_NONE:
       out[0] = 0;
       return;
@@ -1770,6 +1780,7 @@ static void leds(void) {
   led_button(BTN_SAVE, dirty);
   led_button(BTN_OCT_DOWN, ask_until ? 1 : octave < 0); /* both lit: they answer */
   led_button(BTN_OCT_UP, ask_until ? 1 : octave > 0);
+  led_backlight(song.lights);
 }
 
 void loop(void) {
