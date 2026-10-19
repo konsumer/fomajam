@@ -53,9 +53,11 @@ typedef struct {
   uint8_t filter, reso;   /* the master filter: 0..63 low-pass, 64 off, 65..127 high-pass */
   uint8_t dtype;          /* the distortion's kind (D_*); DRIVE is song.drive */
   uint8_t ccout;          /* 1: parameters changed here are sent out as MIDI CC (CC.md) */
+  uint8_t lights;         /* the keys' backlight: 0 off, 1 low, 2 full (was padding: a saved song has 0) */
 } song_t;
 
 _Static_assert(sizeof(song_t) <= SETTINGS_MAX, "the song must fit in the settings");
+_Static_assert(sizeof(song_t) == 2686, "a version 7 song is 2686 bytes: a new field needs SONG_VERSION + 1");
 
 extern song_t song; /* written by loop() only; audio() reads it */
 

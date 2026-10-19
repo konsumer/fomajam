@@ -235,6 +235,26 @@ void led_button(int b, int on) {
     fm1_led_key((uint32_t)b, on);
   }
 }
+void led_backlight(int level) {
+  static const uint16_t NS[3] = {0, 1000, 4000}; /* the pulse a frame; a lit LED is ~95 us */
+  static int8_t was = -1;
+  level = level < 0 ? 0 : level > 2 ? 2
+                                    : level;
+  if (level == was) {
+    return;
+  }
+  if (was < 0) { /* once: every LED behind a key or button */
+    for (uint32_t p = 0; p < FM1_NCOL; p++) {
+      for (uint32_t r = 1; r < 5u; r++) {
+        if (FM1_KEYMAP[r][p] >= 0) {
+          fm1_led_bg[p] |= (uint8_t)(1u << r);
+        }
+      }
+    }
+  }
+  was = (int8_t)level;
+  fm1_led_bg_ns = NS[level];
+}
 void print(const char *s) { (void)s; }
 
 /* ---- the timer: 10 kHz key scan, milliseconds, USB at 2 kHz. It outranks the audio ISR; nested in a

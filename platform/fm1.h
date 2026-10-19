@@ -68,6 +68,7 @@ uint32_t master_knob(void); /* the MASTER knob 0..1023; it is also the volume */
 /* ---- LEDs */
 void led_key(int k, int on);
 void led_button(int b, int on);
+void led_backlight(int level); /* every key and button glows dimly: 0 off, 1 low, 2 full */
 
 /* ---- screen: 240 x 240, RGB565. Draw anywhere, any time in loop(); what changed is sent
  * after loop() returns. Sending is ~0.3 ms per row: draw only what changed. */

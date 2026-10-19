@@ -31,7 +31,7 @@ uint32_t micros(void) { return now_us; }
 /* ---- the panel: the page sets what is held; loop() sees it as the FM-1 shows it */
 static uint32_t web_k, web_b, web_master_v = 700;
 static int32_t web_e[ENC_COUNT];
-static uint32_t in_keys, in_kp, in_kr, in_btn, in_bp, in_br, led_k, led_b;
+static uint32_t in_keys, in_kp, in_kr, in_btn, in_bp, in_br, led_k, led_b, led_bg;
 static int32_t in_enc[ENC_COUNT];
 static uint32_t taps_k, taps_b; /* presses shorter than a millisecond still count */
 
@@ -57,6 +57,8 @@ EXPORT(web_led_keys)
 uint32_t web_led_keys(void) { return led_k; }
 EXPORT(web_led_buttons)
 uint32_t web_led_buttons(void) { return led_b; }
+EXPORT(web_led_backlight)
+uint32_t web_led_backlight(void) { return led_bg; }
 
 static void input_snapshot(void) {
   int e;
@@ -92,6 +94,8 @@ void led_button(int b, int on) {
     led_b = on ? led_b | 1u << b : led_b & ~(1u << b);
   }
 }
+void led_backlight(int level) { led_bg = level < 0 ? 0u : level > 2 ? 2u
+                                                                    : (uint32_t)level; }
 
 /* ---- the screen: the page reads fb when fb_gen moves */
 EXPORT(web_fb)

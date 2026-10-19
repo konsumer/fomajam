@@ -39,7 +39,7 @@ bar**. The knob bar shows what KNOB1–4 do on the current page, always in the s
 | `HOME`       | MIX                 | white keys: mute tracks 1–9; black keys: tracks | LEVEL, DELAY, REVERB, MUTE                                                                                              |
 | `HOME` again | SCOPE, then MIDI IN | play the track                                  | the MIX knobs. SCOPE shows the output; MIDI IN lists the last messages that came in. `HOME` once more goes back to MIX. |
 | `FX`         | FX                  | play the track                                  | 4 pages (press `SEL`): see [Effects](#effects)                                                                          |
-| `GLO`        | GLOBAL              | play the track                                  | TEMPO page: BPM, SWING, LENGTH, THEME; MIDI page: CLOCK, CC OUT. Also shows CPU load.                                   |
+| `GLO`        | GLOBAL              | play the track                                  | TEMPO page: BPM, SWING, LENGTH, THEME; SETUP page: CLOCK, CC OUT, LIGHTS. Also shows CPU load.                                   |
 
 **Playing the keys:** on a synth track, the keys are a keyboard. On a drum track, they play the machine's kit: the
 white keys are BD SD CH OH CP RS LT MT HT CY RD CB TB MA CL TI, and the black keys are BD2 SD2 CB2 and the congas. (On
@@ -156,7 +156,7 @@ respond to any note.
 
 **MIDI controllers:** every parameter also has a fixed MIDI CC, on the same channels (channel 16 is the song and
 effects), so a controller with lots of knobs reaches everything without menus. See [CC.md](CC.md) for the map. With
-`CC OUT` on (GLOBAL page, MIDI page), changes made on the FM-1 are sent back out so a controller's lights follow.
+`CC OUT` on (GLOBAL page, SETUP page), changes made on the FM-1 are sent back out so a controller's lights follow.
 
 **MIDI out** is a machine (MIDI, shown as `MID` on the grid). Its steps are sent over USB MIDI instead of making a
 sound:
@@ -190,6 +190,12 @@ The themes are in [src/themes.h](src/themes.h): one for each FM-1 color (BLACK, 
 RED, ORANGE, TEAL), plus WHITE (a light screen) and NEON. `THEME` on the GLOBAL page changes the colors as you turn it.
 A theme is about a dozen colors; add one to the file and it appears on the GLOBAL page. The eight track colors also
 color the drum voices: kicks use the first, snares the second, claps the third, closed hi-hats the fourth, and so on.
+
+## Key lights
+
+`LIGHTS` on the GLOBAL page's SETUP page (press `SEL`) dimly lights every key and button so the labels are easy to
+find in the dark, or on an FM-1 with dark keys: `OFF`, `LOW` or `FULL`. Lit keys and buttons still stand out above it.
+It's saved with the song.
 
 ## Develop
 
