@@ -253,6 +253,21 @@ static const char *pname(int id) {  /* EXTRA is what the voice's original called
 
 static int is_midi(int t) { return machine_midi(machine_of(t)); }
 
+static int nearest_voice(int m, int v) { /* the voice of machine m nearest v that it has (a kit lacks some) */
+  int hi = machine_voices(m) - 1;
+  v = v < 0 ? 0 : v > hi ? hi
+                         : v;
+  for (int d = 0; d <= hi; d++) {
+    if (v - d >= 0 && machine_has(m, v - d)) {
+      return v - d;
+    }
+    if (v + d <= hi && machine_has(m, v + d)) {
+      return v + d;
+    }
+  }
+  return v;
+}
+
 static int subpages(void) {
   return page == PG_GLOBAL ? 2 : page == PG_FX       ? 4
                              : page != PG_SOUND      ? 1
@@ -438,6 +453,8 @@ static void pset(int id, int v) {
       synth_load(track, v);
     } else if (id == P_MACHINE && engine_of(track) >= 0) { /* a synth engine: its first preset */
       synth_load(track, 0);
+    } else if (id == P_MACHINE && !is_synth(track)) { /* a kit: a voice it has (not a note, not one it lacks) */
+      song.track[track].voice = (uint8_t)nearest_voice(v, song.track[track].voice);
     }
   } else if (id == P_STEP) {
     cursor = v;
@@ -1244,12 +1261,16 @@ static void turn(int id, int e) {
     return;
   }
   int lo = plo(id), hi = phi(id), v = pget(id);
-  if (id == P_VOICE || id == P_STVOICE) {                                            /* one voice a detent, past the ones this machine has none of */
-    int m = machine_of(track), n = v < 0 && d > 0 ? song.track[track].voice - 1 : v; /* from a rest: the track's voice */
+  if (id == P_VOICE || id == P_STVOICE) { /* one voice a detent, past the ones this machine has none of */
+    int m = machine_of(track), n = v > hi ? hi + 1 : v;
     lo = id == P_STVOICE ? -1 : 0;
-    do {
-      n += d > 0 ? 1 : -1;
-    } while (n >= 0 && n <= hi && !machine_has(m, n));
+    if (v < 0 && d > 0) { /* from a rest: the track's voice, or the nearest one this machine has */
+      n = nearest_voice(m, song.track[track].voice);
+    } else {
+      do {
+        n += d > 0 ? 1 : -1;
+      } while (n >= 0 && n <= hi && !machine_has(m, n));
+    }
     if (n >= lo && n <= hi && n != v) {
       pset(id, n);
       changed(id);
@@ -1510,19 +1531,8 @@ static void cc_in(int ch, int cc, int val) {
     return;
   }
   int lo = plo(id), hi = phi(id), v = lo + (val * (hi - lo) + 63) / 127;
-  if (id == P_VOICE) { /* the nearest voice the machine has */
-    int m = machine_of(track), n = v;
-    for (int d = 0; d <= hi; d++) {
-      if (v - d >= 0 && machine_has(m, v - d)) {
-        n = v - d;
-        break;
-      }
-      if (v + d <= hi && machine_has(m, v + d)) {
-        n = v + d;
-        break;
-      }
-    }
-    v = n;
+  if (id == P_VOICE) {
+    v = nearest_voice(machine_of(track), v);
   }
   char s[24];
   if (v != pget(id)) {
@@ -1708,6 +1718,11 @@ static void sanitize(void) {
     }
   }
   song.pattern &= PATTERNS - 1;
+  for (int t = 0; t < TRACKS; t++) {
+    if (!is_synth(t)) {
+      song.track[t].voice = (uint8_t)nearest_voice(machine_of(t), song.track[t].voice);
+    }
+  }
   for (int t = 0; t < TRACKS; t++) { /* a synth engine's own */
     if (engine_of(t) >= 0) {
       for (int k = 0; k < 8; k++) {
