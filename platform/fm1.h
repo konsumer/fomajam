@@ -88,8 +88,12 @@ int text(int x, int y, const char *s, uint16_t color, int font); /* returns the 
 int text_width(const char *s, int font);
 int text_height(int font);
 
-/* ---- MIDI over USB (any channel; SysEx belongs to the updater) */
-int midi_read(uint8_t *status, uint8_t *d1, uint8_t *d2); /* 1: got one */
+/* ---- MIDI in over USB and the TRS jack, out over USB (any channel; SysEx belongs to the updater).
+ * midi_read gives channel messages and clock / start / continue / stop (0xF8 0xFA 0xFB 0xFC); for those four,
+ * d1 | d2 << 8 is when it came: (micros() >> 6) & 0xFFFF */
+enum { MIDI_USB = 1,
+       MIDI_TRS };
+int midi_read(uint8_t *status, uint8_t *d1, uint8_t *d2); /* 0: none; else where it came from: MIDI_USB or MIDI_TRS */
 void midi_send(uint8_t status, uint8_t d1, uint8_t d2);
 
 /* ---- settings: up to SETTINGS_MAX bytes that survive power-off (three 4 KiB flash sectors, less a header). Saving stalls the sound for

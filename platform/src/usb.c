@@ -183,7 +183,11 @@ static uint32_t sx_out_q[SXQ];
 static volatile uint32_t so_w, so_r;
 #endif
 
-/* MIDI rings: 4-byte USB-MIDI event packets */
+/* MIDI rings: 4-byte USB-MIDI event packets. In: the cable nibble is where it came from (0 USB, 1 the TRS jack),
+ * and a clock / transport message has when it came in its data bytes (MIDI_STAMP) */
+#ifndef MIDI_STAMP
+#define MIDI_STAMP() 0u
+#endif
 #define MQ 64u
 static uint32_t midi_in_q[MQ], midi_out_q[MQ];
 static volatile uint32_t mi_w, mi_r, mo_w, mo_r;
@@ -833,7 +837,7 @@ static void midi_in_event(uint32_t pkt)
     }
     if (cin == 0xFu && (st == 0xF8u || st == 0xFAu || st == 0xFBu || st == 0xFCu)) {   /* clock, transport */
         if (mi_w - mi_r < MQ) {
-            midi_in_q[mi_w % MQ] = 0xFu | st << 8;
+            midi_in_q[mi_w % MQ] = 0xFu | st << 8 | MIDI_STAMP() << 16;
             RING_PUBLISH();
             mi_w++;
         }
@@ -842,7 +846,7 @@ static void midi_in_event(uint32_t pkt)
     if (cin >= 8u && cin <= 0xEu && (st >> 4) == cin && !((pkt >> 16) & 0x80u) &&
         (cin == 0xCu || cin == 0xDu || !(pkt & 0x80000000u))) {
         if (mi_w - mi_r < MQ) {
-            midi_in_q[mi_w % MQ] = pkt;
+            midi_in_q[mi_w % MQ] = pkt & ~0xF0u;          /* cable 0: USB */
             RING_PUBLISH();
             mi_w++;
         }

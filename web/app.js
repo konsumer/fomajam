@@ -423,7 +423,7 @@ $('midiin').addEventListener('change', async () => {
   const a = await midiPorts()
   if (midiIn) midiIn.onmidimessage = null
   midiIn = a && a.inputs.get($('midiin').value)
-  if (midiIn) midiIn.onmidimessage = (e) => e.data[0] < 0xf0 && send({ type: 'midi', data: Array.from(e.data) })
+  if (midiIn) midiIn.onmidimessage = (e) => (e.data[0] < 0xf0 || [0xf8, 0xfa, 0xfb, 0xfc].includes(e.data[0])) && send({ type: 'midi', data: Array.from(e.data) })
 })
 $('midiout').addEventListener('change', async () => {
   const a = await midiPorts()

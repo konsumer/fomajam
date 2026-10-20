@@ -6,7 +6,7 @@
 #define TRACKS 9 /* each plays one machine: a drum machine, or a synth engine */
 #define STEPS 16
 #define PATTERNS 40 /* as many as fit the settings */
-#define SONG_VERSION 8
+#define SONG_VERSION 9
 
 /* a step: what plays (a drum machine's voice, or a synth's MIDI note) and how */
 #define STEP_ON 1
@@ -53,11 +53,17 @@ typedef struct {
   uint8_t dtype;          /* the distortion's kind (D_*); DRIVE is song.drive */
   uint8_t ccout;          /* 1: parameters changed here are sent out as MIDI CC (CC.md) */
   uint8_t lights;         /* the keys' backlight: 0 off, 1 low, 2 full (was padding: a saved song has 0) */
-  pattern_t pat[PATTERNS]; /* last since version 8 (8 of them before, between track[] and rsize) */
+  pattern_t pat[PATTERNS]; /* here since version 8 (8 of them before, between track[] and rsize) */
+  /* (added in version 9: a version 8 song loads without them) */
+  uint8_t midiin;          /* MIDI in from: 0 USB and TRS, MIDI_USB, MIDI_TRS */
+  uint8_t sync;            /* 1: follow MIDI clock in (and start / continue / stop) */
+  uint8_t selch;           /* the channel that plays the selected track: 0 none, else 1 + it */
+  uint8_t rxch[TRACKS];    /* the channel each track hears: 0 none, else 1 + it */
 } song_t;
 
 _Static_assert(sizeof(song_t) <= SETTINGS_MAX, "the song must fit in the settings");
-_Static_assert(sizeof(song_t) == 11902, "a version 8 song is 11902 bytes: a new field needs SONG_VERSION + 1");
+_Static_assert(sizeof(song_t) == 11914, "a version 9 song is 11914 bytes: a new field needs SONG_VERSION + 1");
+#define SONG8_SIZE __builtin_offsetof(song_t, midiin)
 /* the songs before: version 7 had 8 patterns after track[] and the effects after them; version 6 no effects */
 #define SONG_HEAD __builtin_offsetof(song_t, rsize)               /* up to the patterns, in every version */
 #define SONG_FX (__builtin_offsetof(song_t, pat) - SONG_HEAD)     /* rsize .. lights */
@@ -67,13 +73,14 @@ _Static_assert(SONG7_SIZE == 2686, "a version 7 song was 2686 bytes");
 
 extern song_t song; /* written by loop() only; audio() reads it */
 
-/* ---- the engine (engine.c). Written by loop(): */
+/* ---- the engine (engine.c). Written by loop(), and by audio() when it follows MIDI clock (start / stop): */
 extern volatile uint8_t playing;
 /* written by audio(): */
 extern volatile uint8_t cur_pattern;   /* the pattern playing (song.pattern takes over when it ends) */
 extern volatile int8_t play_step;      /* -1: stopped */
 extern volatile uint16_t hits[TRACKS]; /* counts each sound started, for the screen */
-extern volatile uint8_t cpu_load, cpu_peak; /* how much of each block's time audio() used, in % (FM-1 only) */
+extern volatile uint8_t cpu_load, cpu_peak;
+extern volatile uint16_t ext_bpm;      /* the tempo of the MIDI clock coming in (song.sync), 0: none */ /* how much of each block's time audio() used, in % (FM-1 only) */
 #define SCOPE_LEN 1024
 extern int16_t scope[SCOPE_LEN];   /* the last of the output, for the screen's oscilloscope */
 extern volatile uint32_t scope_at; /* where the next frame goes (it only counts up) */
@@ -82,6 +89,8 @@ void engine_tempo(void);             /* after bpm, swing or delay time change */
 void live_on(int t, int v, int vel); /* play track t now: a drum voice, or a synth note (held) */
 void live_off(int t, int v);         /* let a synth note go */
 void midi_out(int status, int d1, int d2); /* a message out over USB MIDI, sent by audio() (its only sender) */
+int midi_take(uint8_t *status, uint8_t *d1, uint8_t *d2); /* a channel message in, from song.midiin: audio() reads MIDI
+                                                         * (it keeps the clock) and passes these on. 0: none */
 
 /* ---- the machines: the modeled drums, the ROM drums, SMP (samples/) if there are any, the synth engines */
 int machine_count(void);

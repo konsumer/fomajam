@@ -2,15 +2,15 @@
 
 Every parameter you can change on the FM-1 also has a MIDI CC, so a controller with lots of knobs can reach them
 without paging through menus. The numbers are fixed: set your controller's knobs to send the CCs below. This works
-the same on the FM-1 (over USB MIDI) and in the web emulator (pick your controller under "MIDI in").
+the same on the FM-1 (over USB MIDI or the TRS jack) and in the web emulator (pick your controller under "MIDI in").
 
 **Channels:**
 
-| Channel | Controls                                                                             |
-| ------- | ------------------------------------------------------------------------------------ |
-| 1–9     | tracks 1–9                                                                           |
-| 10      | the selected track (whichever one is on screen), so one set of knobs edits any track |
-| 16      | the song: tempo, effects, transport                                                  |
+| Channel | Controls                                                                                        |
+| ------- | ----------------------------------------------------------------------------------------------- |
+| 1–9     | tracks 1–9 (each track's `TRK CH`, on the GLOBAL page's MIDI page)                              |
+| 10      | the selected track (whichever one is on screen), so one set of knobs edits any track (`SEL CH`) |
+| 16      | the song: tempo, effects, transport                                                             |
 
 **Values:** each CC's 0–127 covers the parameter's whole range. On/off parameters turn on at 64 and above. A list
 (MACHINE, TYPE, THEME, ...) is spread across 0–127. VOICE picks the nearest voice the machine has. The FM-1 shows the
