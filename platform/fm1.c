@@ -49,8 +49,10 @@ static volatile uint32_t fm1_ms; /* milliseconds since power-on (TIMER5) */
 #define FELUCCA_OTA 1
 #define FELUCCA_CDC 0
 #define FELUCCA_UAC 1
-#define FELUCCA_UAC_OUT 1 /* a computer or tablet plays through the FM-1 too */
+#define FELUCCA_UAC_OUT 1                            /* a computer or tablet plays through the FM-1 too */
+#define MIDI_STAMP() ((fm1_micros() >> 6) & 0xFFFFu) /* in midi_read: micros() >> 6 */
 #include "usb.c"
+#include "midi_uart.c"
 
 /* ---- flash: read anywhere; erase / program only the update's staging area and the settings sectors
  * (Felucca's globals, 0xFC000..0xFF000: below them are the update records, above the MAC key) */
@@ -187,7 +189,7 @@ int settings_save(const void *p, uint32_t n) { /* p is in RAM (the flash driver 
   return fl_write(SETTINGS_AT, (const uint8_t *)h, sizeof h); /* the header last: a cut save stays invalid */
 }
 
-/* ---- MIDI over USB: 4-byte USB-MIDI packets, cable 0 */
+/* ---- MIDI in from USB (cable 0) and the TRS jack (cable 1); out over USB */
 int midi_read(uint8_t *status, uint8_t *d1, uint8_t *d2) {
   uint32_t pk;
   if (mi_r == mi_w) {
@@ -198,7 +200,7 @@ int midi_read(uint8_t *status, uint8_t *d1, uint8_t *d2) {
   *status = (uint8_t)(pk >> 8);
   *d1 = (uint8_t)(pk >> 16);
   *d2 = (uint8_t)(pk >> 24);
-  return 1;
+  return pk & 0x10u ? MIDI_TRS : MIDI_USB;
 }
 void midi_send(uint8_t status, uint8_t d1, uint8_t d2) {
   uint32_t st = status;
@@ -294,6 +296,7 @@ void fm1_timer5_irq(void) {
   }
   if (owed) {
     usb_poll();
+    uart_midi_poll();
   }
   owed = 0;
 }
@@ -432,6 +435,7 @@ void fm1_cstart(void) {
   fm1_adc_init();
   fm1_audio_init(abuf, HALF_WORDS, isr_alnk0, 3); /* (abuf is zero: .bss) */
   usb_start();
+  uart_midi_init();
   fm1_timer5_start(isr_timer5, 4);
   fm1_guard_lock_top();
   fm1_irq_enable_all();

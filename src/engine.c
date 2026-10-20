@@ -13,6 +13,7 @@ volatile uint8_t cur_pattern;
 volatile int8_t play_step = -1;
 volatile uint16_t hits[TRACKS];
 volatile uint8_t cpu_load, cpu_peak;
+volatile uint16_t ext_bpm;
 int16_t scope[SCOPE_LEN];
 volatile uint32_t scope_at;
 
@@ -51,6 +52,22 @@ static void push(int kind, int a, int b, int c) {
 void live_on(int t, int v, int vel) { push(EV_ON, t, v, vel); }
 void live_off(int t, int v) { push(EV_OFF, t, v, 0); }
 void midi_out(int status, int d1, int d2) { push(EV_MIDI, status, d1, d2); }
+
+/* ---- MIDI in: audio() reads it all, keeps the clock and passes the rest to loop() */
+static struct {
+  uint8_t st, d1, d2;
+} fwd[QLEN];
+static volatile uint8_t f_head, f_tail; /* audio() writes the head, loop() the tail */
+
+int midi_take(uint8_t *status, uint8_t *d1, uint8_t *d2) {
+  uint8_t t = f_tail;
+  if (t == f_head) {
+    return 0;
+  }
+  *status = fwd[t].st, *d1 = fwd[t].d1, *d2 = fwd[t].d2;
+  f_tail = (t + 1) & (QLEN - 1);
+  return 1;
+}
 
 /* ---- MIDI tracks: the note each has sounding, and the frames until its note-off */
 static uint8_t m_note[TRACKS], m_on[TRACKS];
@@ -127,6 +144,8 @@ static void rat_tick(uint32_t n) {
 }
 
 static int32_t ctr;             /* frames to the next step */
+static uint32_t ext_q4;         /* following a clock: a tick's length in frames, Q4 (0: none yet) */
+static uint8_t ext_phase;       /* the tick in the step: a step every 6 */
 static uint32_t step_frames;    /* the step playing's length */
 static uint32_t clk_acc, clk_n; /* MIDI clock: 6 ticks per 16th note, the first on the step */
 
@@ -139,9 +158,10 @@ static void next_step(void) {
   }
   play_step = (int8_t)s;
   const pattern_t *p = &song.pat[cur_pattern];
-  uint32_t step_len = (s & 1) ? len_odd : len_even;
+  uint32_t step_len = song.sync ? (ext_q4 ? ext_q4 * 6 >> 4 : len_even) : (s & 1) ? len_odd
+                                                                                  : len_even;
   step_frames = step_len;
-  if (song.clock) {
+  if (song.clock && !song.sync) { /* (following a clock, each tick in is passed on: ext_tick) */
     midi_send(0xF8, 0, 0);
     clk_acc = 0;
     clk_n = 1;
@@ -172,7 +192,31 @@ static void next_step(void) {
                                          : (int32_t)(step_len * (d->gate ? d->gate : 1) / 100u);
     hit(t, p->val[t][s], vel, slide_in, gate);
   }
-  ctr += (int32_t)step_len; /* (any overshoot from the last step is taken off this one, so the tempo stays exact) */
+  if (!song.sync) {
+    ctr += (int32_t)step_len; /* (any overshoot from the last step is taken off this one, so the tempo stays exact) */
+  }
+}
+
+/* a clock tick in at frame at (of all frames played): the tempo from the ticks, and a step every 6 */
+static uint32_t ext_last;
+static uint8_t ext_on; /* ticks are coming (a gap over 1 s: they stopped) */
+static void ext_tick(uint32_t at) {
+  uint32_t d = at - ext_last;
+  ext_last = at;
+  if (ext_on && d < 44100 && (!ext_q4 || d << 4 < ext_q4 * 3)) { /* (not a pause in the clock) */
+    ext_q4 = ext_q4 ? ext_q4 + (uint32_t)(((int32_t)(d << 4) - (int32_t)ext_q4) >> 2) : d << 4;
+    ext_bpm = (uint16_t)(ext_q4 ? 1764000u / ext_q4 : 0); /* 44100 * 60 / 24, Q4 */
+  }
+  ext_on = 1;
+  if (song.clock) {
+    midi_send(0xF8, 0, 0);
+  }
+  if (playing) {
+    if (!ext_phase) {
+      next_step();
+    }
+    ext_phase = (uint8_t)((ext_phase + 1) % 6);
+  }
 }
 
 static void clock_tick(uint32_t n) { /* send the step's other five clock ticks when they are due */
@@ -228,12 +272,45 @@ static void render(uint32_t at, uint32_t n) {
 }
 
 void audio(int32_t *out, uint32_t frames) {
-  static uint8_t was;
-  static uint32_t avg, peak; /* Q8 % */
+  static uint8_t was, cont, stop_phase;
+  static int8_t stop_step;
+  static uint32_t avg, peak, frame_pos, t_prev; /* avg, peak: Q8 % */
   uint32_t t0 = micros();
   if (frames > 256) {
     frames = 256;
   }
+  /* MIDI in: channel messages to loop(); following a clock, its ticks placed in this block by when they came
+   * (between the last block and this one: the sound is a block late, but steady), and start / continue / stop */
+  uint8_t st, d1, d2, tick_at[24], ticks = 0;
+  for (int src; (src = midi_read(&st, &d1, &d2));) {
+    if (song.midiin && song.midiin != src) {
+      continue;
+    }
+    if (st < 0xF8) {
+      uint8_t h = f_head, next = (h + 1) & (QLEN - 1);
+      if (next != f_tail) {
+        fwd[h].st = st, fwd[h].d1 = d1, fwd[h].d2 = d2;
+        f_head = next;
+      }
+    } else if (!song.sync) {
+      continue;
+    } else if (st == 0xF8) {
+      int16_t d = (int16_t)((d1 | d2 << 8) - (t_prev >> 6)); /* 64 us units: 2.8224 frames */
+      uint32_t at = d < 0 ? 0 : (uint32_t)d * 2822u / 1000u;
+      if (ticks < sizeof tick_at) {
+        tick_at[ticks++] = (uint8_t)(at >= frames ? frames - 1 : at);
+      }
+    } else { /* start from the top, continue from where it stopped, stop */
+      if (st == 0xFA) {
+        play_step = -1;
+        ext_phase = 0;
+      }
+      cont = st == 0xFB && !playing;
+      playing = st != 0xFC;
+      ticks = 0;
+    }
+  }
+  t_prev = t0;
   for (uint32_t i = 0; i < frames; i++) {
     mix[i] = snd[i] = rsnd[i] = csnd[i] = 0;
   }
@@ -261,7 +338,12 @@ void audio(int32_t *out, uint32_t frames) {
   }
   if (playing != was) {
     was = playing;
-    play_step = -1;
+    if (!playing) {
+      stop_step = play_step, stop_phase = ext_phase;
+    }
+    play_step = cont ? stop_step : -1;
+    ext_phase = cont ? stop_phase : 0;
+    cont = 0;
     ctr = 0;
     if (!playing) {
       synths_stop();
@@ -289,19 +371,30 @@ void audio(int32_t *out, uint32_t frames) {
   if (!playing) {
     cur_pattern = song.pattern;
   }
-  for (uint32_t i = 0; i < frames; i += 32) {
+  if (frame_pos - ext_last > 44100) { /* no clock for 1 s */
+    ext_q4 = 0;
+    ext_bpm = 0;
+    ext_on = 0;
+  }
+  for (uint32_t i = 0, tk = 0; i < frames; i += 32) {
     uint32_t n = frames - i < 32 ? frames - i : 32;
-    if (playing) {
+    while (tk < ticks && tick_at[tk] < i + n) {
+      ext_tick(frame_pos + tick_at[tk++]);
+    }
+    if (playing && !song.sync) {
       if (ctr <= 0) {
         next_step();
       }
       ctr -= (int32_t)n;
       clock_tick(n);
+    }
+    if (playing) {
       rat_tick(n);
     }
     m_tick(n);
     render(i, n);
   }
+  frame_pos += frames;
   int32_t fb = song.dfdbk * 230;
   uint32_t dl = dlen;
   for (uint32_t i = 0; i < frames; i++) { /* the delay */

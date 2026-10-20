@@ -132,7 +132,10 @@ int midi_read(uint8_t *status, uint8_t *d1, uint8_t *d2) {
   *status = (uint8_t)m;
   *d1 = (uint8_t)(m >> 8);
   *d2 = (uint8_t)(m >> 16);
-  return 1;
+  if (*status >= 0xF8) { /* when it came: as the FM-1 has it */
+    *d1 = (uint8_t)(now_us >> 6), *d2 = (uint8_t)(now_us >> 14);
+  }
+  return MIDI_USB;
 }
 void midi_send(uint8_t status, uint8_t d1, uint8_t d2) {
   if (mo_w - mo_r < MQ) {

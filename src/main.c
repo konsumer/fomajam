@@ -60,6 +60,9 @@ enum { F_NUM,
        F_FILTER,
        F_DIST,
        F_LIGHTS,
+       F_SOURCE,
+       F_SYNC,
+       F_INCH,
        F_NONE };
 enum { P_TUNE,
        P_DECAY,
@@ -123,6 +126,10 @@ enum { P_TUNE,
        P_DTYPE,
        P_CCOUT,
        P_LIGHTS,
+       P_MIDIIN, /* MIDI in */
+       P_SYNC,
+       P_SELCH,
+       P_RXCH,
        P_NONE, /* an empty knob */
        PARAMS };
 static const struct {
@@ -191,6 +198,10 @@ static const struct {
     [P_DTYPE] = {"TYPE", 0, DISTS - 1, F_DIST},
     [P_CCOUT] = {"CC OUT", 0, 1, F_ONOFF},
     [P_LIGHTS] = {"LIGHTS", 0, 2, F_LIGHTS},
+    [P_MIDIIN] = {"MIDI IN", 0, 2, F_SOURCE},
+    [P_SYNC] = {"SYNC", 0, 1, F_SYNC},
+    [P_SELCH] = {"SEL CH", 0, 16, F_INCH},
+    [P_RXCH] = {"TRK CH", 0, 16, F_INCH},
     [P_NONE] = {"", 0, 0, F_NONE},
 };
 
@@ -269,7 +280,7 @@ static int nearest_voice(int m, int v) { /* the voice of machine m nearest v tha
 }
 
 static int subpages(void) {
-  return page == PG_GLOBAL ? 2 : page == PG_FX       ? 4
+  return page == PG_GLOBAL ? 3 : page == PG_FX       ? 4
                              : page != PG_SOUND      ? 1
                              : engine_of(track) >= 0 ? 5
                              : is_midi(track)        ? 3
@@ -278,9 +289,9 @@ static int subpages(void) {
 
 static const char *subpage_name(int i) { /* the tabs on the SOUND and GLOBAL pages */
   static const char *const DRUM[2] = {"PLAY", "MORE"}, *const SE[3] = {"ENV", "PATCH", "PLAY"}, *const MIDI[3] = {"NOTE", "CC", "CC#"},
-                           *const GLOBAL[2] = {"TEMPO", "SETUP"}, *const FX[4] = {"SENDS", "SPACE", "MOTION", "MASTER"};
+                           *const GLOBAL[3] = {"TEMPO", "SETUP", "MIDI"}, *const FX[4] = {"SENDS", "SPACE", "MOTION", "MASTER"};
   int e = engine_of(track);
-  return page == PG_GLOBAL ? GLOBAL[i & 1] : page == PG_FX ? FX[i & 3]
+  return page == PG_GLOBAL ? GLOBAL[i % 3] : page == PG_FX ? FX[i & 3]
                                          : e >= 0          ? (i < 2 ? synth_page(e, i) : SE[i - 2])
                                          : is_midi(track)  ? MIDI[i % 3]
                                                            : DRUM[i & 1];
@@ -294,11 +305,11 @@ static void pick_knobs(int *k) {
   static const uint8_t SE[5][4] = {{P_SE0, P_SE1, P_SE2, P_SE3}, {P_SE4, P_SE5, P_SE6, P_SE7}, {P_ATK, P_DEC, P_SUS, P_REL}, {P_PRESET, P_FENV, P_LEVEL, P_SEND}, {P_GATE, P_MONO, P_SLIDE, P_TUNE}};
   static const uint8_t MIX[4] = {P_LEVEL, P_SEND, P_RSEND, P_MUTE};
   static const uint8_t FX[4][4] = {{P_SEND, P_RSEND, P_CSEND, P_DUCK}, {P_DTIME, P_DFDBK, P_RSIZE, P_RDAMP}, {P_CRATE, P_CDEPTH, P_PUMP, P_NONE}, {P_FILTER, P_RESO, P_DRIVE, P_DTYPE}};
-  static const uint8_t GLOBAL[2][4] = {{P_BPM, P_SWING, P_LENGTH, P_THEME}, {P_CLOCK, P_CCOUT, P_LIGHTS, P_NONE}};
+  static const uint8_t GLOBAL[3][4] = {{P_BPM, P_SWING, P_LENGTH, P_THEME}, {P_CLOCK, P_CCOUT, P_LIGHTS, P_NONE}, {P_MIDIIN, P_SYNC, P_SELCH, P_RXCH}};
   static const uint8_t MIDI[3][4] = {{P_MCH, P_PROG, P_GATE, P_VELO}, {P_CC0, P_CC1, P_CC2, P_CC3}, {P_CCN0, P_CCN1, P_CCN2, P_CCN3}};
   const uint8_t *src = page == PG_MIX || page >= PG_SCOPE          ? MIX
                        : page == PG_FX                             ? FX[sub & 3]
-                       : page == PG_GLOBAL                         ? GLOBAL[sub & 1]
+                       : page == PG_GLOBAL                         ? GLOBAL[sub % 3]
                        : is_midi(track) && page == PG_SOUND        ? MIDI[sub % 3]
                        : engine_of(track) >= 0 && page == PG_SOUND ? SE[sub % 5]
                        : is_synth(track)                           ? SYN_STEP
@@ -358,6 +369,14 @@ static uint8_t *pbyte(int id) { /* the byte behind a parameter, if it is one */
       return &song.ccout;
     case P_LIGHTS:
       return &song.lights;
+    case P_MIDIIN:
+      return &song.midiin;
+    case P_SYNC:
+      return &song.sync;
+    case P_SELCH:
+      return &song.selch;
+    case P_RXCH:
+      return &song.rxch[track];
     case P_SLIDE:
       return &d->slide;
     case P_ATK:
@@ -561,6 +580,21 @@ static void pformat(int id, int v, char *out) {
       s = LIGHTS[v % 3];
       break;
     }
+    case F_SOURCE: {
+      static const char *const SOURCE[3] = {"BOTH", "USB", "TRS"};
+      s = SOURCE[v % 3];
+      break;
+    }
+    case F_SYNC:
+      s = v ? "EXT" : "INT";
+      break;
+    case F_INCH:
+      if (!v) {
+        s = "OFF";
+        break;
+      }
+      format_int(out, v);
+      return;
     case F_NONE:
       out[0] = 0;
       return;
@@ -626,6 +660,15 @@ static void track_title(int t, char *out, int label) { /* "3 909 CH", "9 ANALOG 
   append(out, i, voice_name(machine_of(t), song.track[t].voice));
 }
 
+/* the tempo: the song's, or following a clock in, the clock's (-- before one comes) */
+static void tempo_text(char *s) {
+  if (song.sync && !ext_bpm) {
+    s[0] = '-', s[1] = '-', s[2] = 0;
+  } else {
+    format_int(s, song.sync ? ext_bpm : song.bpm);
+  }
+}
+
 /* ---- the header: page, track (or a message), pattern, tempo, transport */
 static char toast_msg[16];
 static uint32_t toast_until;
@@ -639,8 +682,8 @@ static void draw_transport(void) {
   s[0] = 'P';
   format_int(s + 1, (queued ? next : shown()) + 1);
   text(168, 4, s, queued ? th->accent : th->dim, FONT_SMALL);
-  format_int(s, song.bpm);
-  text(218 - text_width(s, FONT_SMALL), 4, s, th->text, FONT_SMALL);
+  tempo_text(s);
+  text(218 - text_width(s, FONT_SMALL), 4, s, song.sync ? th->accent : th->text, FONT_SMALL);
   uint16_t c = rec ? RGB(255, 60, 60) : th->text;
   if (playing) {
     for (int i = 0; i < 6; i++) {
@@ -1097,9 +1140,9 @@ static void draw_cpu(void) { /* how much of the time the sound takes (on the FM-
 static void draw_global(void) {
   char s[16];
   rect(0, BODY_Y, SCREEN_W, BODY_H, th->bg);
-  format_int(s, song.bpm);
+  tempo_text(s);
   text(8, 30, s, th->accent, FONT_BIG);
-  text(8 + text_width(s, FONT_BIG) + 6, 46, "BPM", th->dim, FONT_SMALL);
+  text(8 + text_width(s, FONT_BIG) + 6, 46, song.sync ? "BPM EXT" : "BPM", th->dim, FONT_SMALL);
   /* the theme: the screen is already in it (turning THEME recolors everything), so its name and colors */
   text(8, 84, "THEME", th->dim, FONT_SMALL);
   text(8, 100, th->name, th->accent, FONT_BIG);
@@ -1207,7 +1250,7 @@ static void changed(int id) { /* a parameter changed: show it where it shows (an
   if (id == P_BPM || id == P_SWING || id == P_DTIME) {
     engine_tempo();
   }
-  if (id == P_BPM) {
+  if (id == P_BPM || id == P_SYNC) {
     draw_transport();
   }
   if (id == P_MACHINE || id == P_VOICE || id == P_STVOICE) {
@@ -1533,14 +1576,12 @@ static void cc_dump(void) { /* all of the selected track's, on channel 10 */
   }
 }
 
-static void cc_in(int ch, int cc, int val) {
-  int t = ch < TRACKS ? ch : ch == 9 ? track
-                                     : -1,
-      id = -1;
+static void cc_in(int ch, int t, int cc, int val) { /* t: the track it is for, or -1 */
+  int id = -1;
   for (int i = 0; t >= 0 && i < N_TRACK_CC; i++) {
     id = TRACK_CC[i][0] == cc ? TRACK_CC[i][1] : id;
   }
-  for (int i = 0; ch == 15 && i < N_SONG_CC; i++) {
+  for (int i = 0; ch == 15 && t < 0 && i < N_SONG_CC; i++) { /* channel 16: the song's */
     id = SONG_CC[i][0] == cc ? SONG_CC[i][1] : id;
   }
   if (id < 0) {
@@ -1614,41 +1655,53 @@ static void cc_in(int ch, int cc, int val) {
   toast(s);
 }
 
-/* MIDI channels 1..9 play tracks 1..9, channel 10 the track chosen; a drum machine takes General MIDI
- * drum keys, a synth notes */
-static void midi_in(void) {
+/* MIDI in (from song.midiin): each track hears its channel (TRK CH, 1..9 at first), and SEL CH (10) plays the
+ * track chosen; a drum machine takes General MIDI drum keys, a synth notes. Channel 16's CCs are the song's */
+static void midi_note(int t, int on, int off, int d1, int d2) {
   static const int8_t GM[47] = {1, 0, 4, 2, 5, 3, 6, 9, 6, 9, 7, 10, 7, 8, 11, 8, 12, 11, 12, 15, 11, 13, 11, -1, 12,
                                 18, 17, 18, 18, 16, 19, 19, 13, 14, 20, 20, -1, -1, -1, -1, 21, 21, 21, -1, -1, -1, -1};
+  if (is_synth(t)) {
+    if (on) {
+      play(t, d1, d2);
+    } else if (off) {
+      live_off(t, d1);
+    }
+  } else if (on) {
+    int v = d1 >= 35 && d1 <= 81 ? GM[d1 - 35] : -1;
+    if (machine_voices(machine_of(t)) != 22) {
+      v = d1 - 36; /* SMP: a sample a key from C */
+    }
+    if (v >= 0 && machine_has(machine_of(t), v)) {
+      play(t, v, d2);
+    }
+  }
+}
+
+static void midi_in(void) {
   uint8_t st, d1, d2;
-  while (midi_read(&st, &d1, &d2)) {
-    if (st < 0xF0) { /* for the MIDI IN page (not clock and the like: they come too often) */
-      mlog[mlog_n % MLOG][0] = st, mlog[mlog_n % MLOG][1] = d1, mlog[mlog_n % MLOG][2] = d2;
-      mlog_n++;
-    }
-    int ch = st & 0x0F, t = ch < TRACKS ? ch : ch == 9 ? track
-                                                       : -1;
+  while (midi_take(&st, &d1, &d2)) {
+    mlog[mlog_n % MLOG][0] = st, mlog[mlog_n % MLOG][1] = d1, mlog[mlog_n % MLOG][2] = d2; /* for the MIDI IN page */
+    mlog_n++;
+    int ch = st & 0x0F;
     int on = (st & 0xF0) == 0x90 && d2, off = (st & 0xF0) == 0x80 || ((st & 0xF0) == 0x90 && !d2);
-    if ((st & 0xF0) == 0xB0) {
-      cc_in(ch, d1, d2);
-      continue;
+    for (int t = 0; t < TRACKS; t++) {
+      if (song.rxch[t] == ch + 1) {
+        if ((st & 0xF0) == 0xB0) {
+          cc_in(ch, t, d1, d2);
+        } else {
+          midi_note(t, on, off, d1, d2);
+        }
+      }
     }
-    if (t < 0) {
-      continue;
+    if (song.selch == ch + 1) {
+      if ((st & 0xF0) == 0xB0) {
+        cc_in(ch, track, d1, d2);
+      } else {
+        midi_note(track, on, off, d1, d2);
+      }
     }
-    if (is_synth(t)) {
-      if (on) {
-        play(t, d1, d2);
-      } else if (off) {
-        live_off(t, d1);
-      }
-    } else if (on) {
-      int v = d1 >= 35 && d1 <= 81 ? GM[d1 - 35] : -1;
-      if (machine_voices(machine_of(t)) != 22) {
-        v = d1 - 36; /* SMP: a sample a key from C */
-      }
-      if (v >= 0 && machine_has(machine_of(t), v)) {
-        play(t, v, d2);
-      }
+    if (ch == 15 && (st & 0xF0) == 0xB0) {
+      cc_in(ch, -1, d1, d2);
     }
   }
 }
@@ -1673,6 +1726,15 @@ static void note_steps(pattern_t *p, int t, const uint8_t *notes, const char *s)
   for (int i = 0; i < STEPS && s[i]; i++) {
     p->val[t][i] = notes[i];
     p->flag[t][i] = (uint8_t)(s[i] == '.' ? 0 : STEP_ON | (s[i] == 'a' ? STEP_ACC : 0) | (s[i] == 's' ? STEP_SLIDE : 0));
+  }
+}
+
+static void midi_defaults(void) { /* channels 1..9: tracks 1..9; 10: the track chosen */
+  song.midiin = 0;
+  song.sync = 0;
+  song.selch = 10;
+  for (int t = 0; t < TRACKS; t++) {
+    song.rxch[t] = (uint8_t)(t + 1);
   }
 }
 
@@ -1706,6 +1768,7 @@ static void default_song(void) {
   song.dfdbk = 60;
   song.drive = 24;
   fx_defaults();
+  midi_defaults();
   for (int t = 0; t < TRACKS; t++) {
     track_t *d = &song.track[t];
     d->machine = (uint8_t)machine_find(MACHINE[t][0], machine_find(MACHINE[t][1], 0));
@@ -1814,7 +1877,12 @@ void setup(void) {
     black_of[k] = IS_BLACK[k % 12] ? (int8_t)b++ : -1;
   }
   if (settings_load(&song, sizeof song) || song.version != SONG_VERSION) {
-    if (!load_old()) {
+    if (!settings_load(&song, SONG8_SIZE) && song.version == 8) { /* the same, without the MIDI in settings */
+      song.version = SONG_VERSION;
+      midi_defaults();
+    } else if (load_old()) {
+      midi_defaults();
+    } else {
       default_song();
     }
   }
@@ -2009,6 +2077,19 @@ void loop(void) {
     if (page == PG_PATTERN) {
       draw_playhead(ps);
     }
+  }
+  static uint16_t tempo_drawn;
+  static uint32_t tempo_at;
+  if (song.sync && ext_bpm != tempo_drawn && (now - tempo_at > 250 || !ext_bpm)) { /* following a clock: its tempo */
+    tempo_drawn = ext_bpm;
+    tempo_at = now;
+    draw_transport();
+    if (page == PG_GLOBAL) {
+      draw_global();
+    }
+  }
+  if (playing != playing_drawn && !playing) { /* (a clock in can stop it too) */
+    stopped_at = now;
   }
   if (shown() != pattern_drawn || playing != playing_drawn) { /* the next pattern started: show it */
     if (shown() != pattern_drawn) {

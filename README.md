@@ -10,7 +10,7 @@ A groovebox firmware for the M-VAVE FM-1, made with [foma](https://github.com/ko
   - **MIDI out**, to sequence other gear
 - 40 patterns of 16 steps, with accents, slides and ratchets
 - effects: delay, reverb and chorus sends, kick ducking, a master filter and 11 kinds of distortion
-- MIDI clock, and color themes
+- MIDI in over USB and the TRS jack, MIDI clock in and out, and color themes
 
 Try it in your browser, and install it on the FM-1 from Chrome or Edge: <https://konsumer.github.io/fomajam/>
 
@@ -32,14 +32,14 @@ bar**. The knob bar shows what KNOB1–4 do on the current page, always in the s
 | `ENV`       | Clear the pattern. It asks first: `OCT+` clears, `OCT-` cancels.                               |
 | `OCT-/OCT+` | Change the keyboard's octave. When a question is shown, `OCT+` is yes, `OCT-` is no.           |
 
-| Button       | Page                | Keys                                            | Knobs                                                                                                                   |
-| ------------ | ------------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `SEQ`        | PATTERN             | white keys: the 16 steps; black keys: tracks    | STEP, VOICE (or NOTE), ACCENT, MACHINE                                                                                  |
-| `EDIT`       | SOUND               | play the track                                  | the track's sound (see [Machines](#machines))                                                                           |
-| `HOME`       | MIX                 | white keys: mute tracks 1–9; black keys: tracks | LEVEL, DELAY, REVERB, MUTE                                                                                              |
-| `HOME` again | SCOPE, then MIDI IN | play the track                                  | the MIX knobs. SCOPE shows the output; MIDI IN lists the last messages that came in. `HOME` once more goes back to MIX. |
-| `FX`         | FX                  | play the track                                  | 4 pages (press `SEL`): see [Effects](#effects)                                                                          |
-| `GLO`        | GLOBAL              | play the track                                  | TEMPO page: BPM, SWING, LENGTH, THEME; SETUP page: CLOCK, CC OUT, LIGHTS. Also shows CPU load.                          |
+| Button       | Page                | Keys                                            | Knobs                                                                                                                                    |
+| ------------ | ------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `SEQ`        | PATTERN             | white keys: the 16 steps; black keys: tracks    | STEP, VOICE (or NOTE), ACCENT, MACHINE                                                                                                   |
+| `EDIT`       | SOUND               | play the track                                  | the track's sound (see [Machines](#machines))                                                                                            |
+| `HOME`       | MIX                 | white keys: mute tracks 1–9; black keys: tracks | LEVEL, DELAY, REVERB, MUTE                                                                                                               |
+| `HOME` again | SCOPE, then MIDI IN | play the track                                  | the MIX knobs. SCOPE shows the output; MIDI IN lists the last messages that came in. `HOME` once more goes back to MIX.                  |
+| `FX`         | FX                  | play the track                                  | 4 pages (press `SEL`): see [Effects](#effects)                                                                                           |
+| `GLO`        | GLOBAL              | play the track                                  | TEMPO page: BPM, SWING, LENGTH, THEME; SETUP page: CLOCK, CC OUT, LIGHTS; MIDI page: MIDI IN, SYNC, SEL CH, TRK CH. Also shows CPU load. |
 
 **Playing the keys:** on a synth track, the keys are a keyboard. On a drum track, they play the machine's kit: the
 white keys are BD SD CH OH CP RS LT MT HT CY RD CB TB MA CL TI, and the black keys are BD2 SD2 CB2 and the congas. (On
@@ -150,9 +150,19 @@ but don't fit; to include one, move it higher in the list. See [LICENSING.md](LI
 
 ### MIDI
 
-**MIDI in:** each track has its own channel. Channels 1–9 play tracks 1–9, whatever machine they use, so a keyboard
-can play any of them. Channel 10 plays the selected track. Drum machines respond to General MIDI drum notes; synths
-respond to any note.
+**MIDI in:** MIDI comes in over USB and the 3.5 mm TRS jack (you need a TRS-to-DIN adapter for the jack). Each
+track has its own channel. Channels 1–9 play tracks 1–9, whatever machine they use, so a keyboard can play any of
+them. Channel 10 plays the selected track. Drum machines respond to General MIDI drum notes; synths respond to any
+note.
+
+The GLOBAL page's third page (press `SEL` twice) sets up MIDI in:
+
+| Knob    | What it does                                                                                     |
+| ------- | ------------------------------------------------------------------------------------------------ |
+| MIDI IN | where MIDI comes from: `BOTH`, `USB` or `TRS`. Everything else is ignored, the clock too.        |
+| SYNC    | `INT`: the FM-1 keeps its own tempo. `EXT`: it follows the MIDI clock coming in (see below).     |
+| SEL CH  | the channel that plays the selected track (10 at first), or `OFF`                                |
+| TRK CH  | the channel the selected track listens on (its number at first), or `OFF`. Tracks can share one. |
 
 **MIDI controllers:** every parameter also has a fixed MIDI CC, on the same channels (channel 16 is the song and
 effects), so a controller with lots of knobs reaches everything without menus. See [CC.md](CC.md) for the map. With
@@ -176,6 +186,12 @@ Its SOUND page has three pages of knobs:
 
 **MIDI clock:** the GLOBAL page's second page (press `SEL`) has `CLOCK`. When it's on, the FM-1 sends MIDI clock
 (24 ticks per beat) with start and stop messages.
+
+With `SYNC` on `EXT`, the FM-1 follows the clock from `MIDI IN` instead: a step every 6 ticks, and start, stop and
+continue from the other device. `PLAY` still works, but nothing moves until the clock does. The header shows the
+clock's tempo (`--` until one comes), and `BPM` and `SWING` wait until you go back to `INT`. With `CLOCK` on too, the
+ticks are passed on over USB, so a computer can follow a drum machine on the TRS jack. Pick one source in `MIDI IN`
+when both send clock.
 
 ## Samples
 
