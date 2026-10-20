@@ -105,7 +105,7 @@ What CC 20–27 do depends on the track's engine, as the knobs on its SOUND page
 | 87  | TYPE      | distortion kind (SOFT HARD TUBE DIODE FUZZ FOLD WAVE RECT BITS RATE CRUSH) |
 | 88  | CLOCK     | send MIDI clock                                                            |
 | 102 | PLAY      | 64 and above plays, below stops                                            |
-| 103 | PATTERN   | patterns 1–8 spread across 0–127 (16 apart)                                |
+| 103 | PATTERN   | patterns 1–40 spread across 0–127 (pattern = value × 40 / 128 + 1)         |
 | 104 | TRACK     | selects tracks 1–9 (about 14 apart)                                        |
 
 ## CC OUT: keeping a controller's lights in step

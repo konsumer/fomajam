@@ -1,6 +1,6 @@
 /* FOMAJAM: a groovebox. It has 9 tracks; each plays its own machine, either a drum machine (808, 909, 707,
  * DMX, ...) with a voice per step, or a synth engine (ANALOG, SUPERSAW, ...) or MIDI out with a note per step.
- * There are 8 patterns of 16 steps.
+ * There are 40 patterns of 16 steps.
  *
  * This file is the user interface. Every page has the same three parts: a header (page, track, pattern,
  * tempo), the body, and a knob bar that shows what KNOB1-4 do on that page, always in the same four colors.
@@ -11,7 +11,7 @@
  *                       and again MIDI IN (what comes in); the keys play on those
  *   FX         FX       sends, delay, reverb, chorus, ducking, the master filter and distortion; the keys play
  *   GLO        GLOBAL   tempo, swing, length, theme, MIDI clock; the keys play
- *   SELECT     picks the track        PRESETS    picks the pattern (it changes at the end of the bar)
+ *   SELECT     picks the track        PRESETS    picks the pattern (playing: the one it rests on, when the one playing ends)
  *   ALGORITHM  sets the tempo         PLAY / REC / SAVE / OCT- OCT+
  *   SEL        the next page of knobs; on PATTERN with a synth, toggles slide on the cursor's step
  *   ENV        clears the pattern after asking (OCT+ answers yes, OCT- no, for every question)
@@ -309,7 +309,9 @@ static void pick_knobs(int *k) {
   }
 }
 
-static pattern_t *pat(void) { return &song.pat[song.pattern]; }
+/* the pattern on screen (and edited): the one playing. A new one (song.pattern) takes over at the end of it */
+static int shown(void) { return playing ? cur_pattern : song.pattern; }
+static pattern_t *pat(void) { return &song.pat[shown()]; }
 
 static uint8_t *pbyte(int id) { /* the byte behind a parameter, if it is one */
   track_t *d = &song.track[track];
@@ -627,13 +629,15 @@ static void track_title(int t, char *out, int label) { /* "3 909 CH", "9 ANALOG 
 /* ---- the header: page, track (or a message), pattern, tempo, transport */
 static char toast_msg[16];
 static uint32_t toast_until;
+static int picking = -1;   /* PRESETS is turning to this pattern (it is chosen once the knob rests) */
+static uint32_t picked_at; /* when it last turned */
 
 static void draw_transport(void) {
   char s[12];
-  int queued = playing && cur_pattern != song.pattern;
+  int next = picking >= 0 ? picking : song.pattern, queued = next != shown();
   rect(166, 0, 74, HEAD_H, th->panel);
   s[0] = 'P';
-  format_int(s + 1, song.pattern + 1);
+  format_int(s + 1, (queued ? next : shown()) + 1);
   text(168, 4, s, queued ? th->accent : th->dim, FONT_SMALL);
   format_int(s, song.bpm);
   text(218 - text_width(s, FONT_SMALL), 4, s, th->text, FONT_SMALL);
@@ -1431,17 +1435,47 @@ static void set_playing(int on) {
 }
 
 static void set_pattern(int pt) {
+  picking = -1;
   if (pt != song.pattern && pt >= 0 && pt < PATTERNS) {
-    char s[16] = "PATTERN ";
     song.pattern = (uint8_t)pt;
-    format_int(s + 8, pt + 1);
-    toast(s);
     dirty = 1;
-    if (page == PG_PATTERN) {
-      draw_body();
+    if (!playing) { /* (playing, the screen changes with the sound, at the end of the pattern) */
+      if (page == PG_PATTERN) {
+        draw_body();
+      }
+      draw_knobs();
     }
-    draw_knobs();
   }
+  draw_transport();
+}
+
+/* PRESETS: turning picks the next pattern. Stopped, it changes now; playing, it is chosen once the knob rests
+ * (passing a pattern on the way doesn't queue it), and plays when the one playing ends */
+#define PICK_MS 400
+static void pick_pattern(int d) {
+  int pt = (picking >= 0 ? picking : song.pattern) + d;
+  if (!d || pt < 0 || pt >= PATTERNS) {
+    return;
+  }
+  char s[20] = "PATTERN ", n[12];
+  format_int(n, pt + 1);
+  if (playing) {
+    picking = pt;
+    picked_at = millis();
+    s[0] = 'N', s[1] = 'E', s[2] = 'X', s[3] = 'T', s[4] = ' ', s[5] = 0;
+    draw_transport();
+  } else {
+    set_pattern(pt);
+  }
+  int i = 0;
+  while (s[i]) {
+    i++;
+  }
+  for (int k = 0; n[k]; k++) {
+    s[i++] = n[k];
+  }
+  s[i] = 0;
+  toast(s);
 }
 
 static int has_param(int id) { /* the selected track's machine has it (a drum machine has no envelope ...) */
@@ -1717,7 +1751,7 @@ static void sanitize(void) {
       track = was;
     }
   }
-  song.pattern &= PATTERNS - 1;
+  song.pattern = song.pattern < PATTERNS ? song.pattern : 0;
   for (int t = 0; t < TRACKS; t++) {
     if (!is_synth(t)) {
       song.track[t].voice = (uint8_t)nearest_voice(machine_of(t), song.track[t].voice);
@@ -1745,6 +1779,34 @@ static void sanitize(void) {
   }
 }
 
+/* a version 7 or 6 song: its 8 patterns were before the effects (6 had none). 1: loaded */
+static int load_old(void) {
+  uint8_t *b = (uint8_t *)&song, fx[SONG_FX];
+  int v = !settings_load(&song, SONG7_SIZE) && song.version == 7 ? 7 : !settings_load(&song, SONG6_SIZE) && song.version == 6 ? 6
+                                                                                                                              : 0;
+  if (!v) {
+    return 0;
+  }
+  for (uint32_t i = 0; i < SONG_FX; i++) {
+    fx[i] = b[SONG6_SIZE + i];
+  }
+  for (uint32_t i = 8 * sizeof(pattern_t); i--;) { /* the patterns move up over where the effects were: from the end */
+    ((uint8_t *)song.pat)[i] = b[SONG_HEAD + i];
+  }
+  for (uint32_t i = 0; i < SONG_FX; i++) {
+    b[SONG_HEAD + i] = fx[i];
+  }
+  for (uint32_t i = 8 * sizeof(pattern_t); i < sizeof song.pat; i++) {
+    ((uint8_t *)song.pat)[i] = 0;
+  }
+  if (v == 6) {
+    fx_defaults();
+    song.lights = 0;
+  }
+  song.version = SONG_VERSION;
+  return 1;
+}
+
 void setup(void) {
   for (int k = 0, w = 0, b = 0; k < KEY_COUNT; k++) {
     static const uint8_t IS_BLACK[12] = {0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0}; /* from F */
@@ -1752,11 +1814,7 @@ void setup(void) {
     black_of[k] = IS_BLACK[k % 12] ? (int8_t)b++ : -1;
   }
   if (settings_load(&song, sizeof song) || song.version != SONG_VERSION) {
-    /* a version 6 song: the same, without the effects at the end */
-    if (!settings_load(&song, (uint32_t) __builtin_offsetof(song_t, rsize)) && song.version == 6) {
-      song.version = SONG_VERSION;
-      fx_defaults();
-    } else {
+    if (!load_old()) {
       default_song();
     }
   }
@@ -1906,7 +1964,10 @@ void loop(void) {
   int t = track + encoder(ENC_SELECT);
   set_track(t < 0 ? 0 : t >= TRACKS ? TRACKS - 1
                                     : t);
-  set_pattern(song.pattern + encoder(ENC_PRESETS));
+  pick_pattern(encoder(ENC_PRESETS));
+  if (picking >= 0 && (!playing || millis() - picked_at >= PICK_MS)) {
+    set_pattern(picking);
+  }
   turn(P_BPM, ENC_ALGORITHM);
   for (int k = 0; k < 4; k++) {
     turn(knobs[k], ENC_KNOB1 + k);
@@ -1949,8 +2010,14 @@ void loop(void) {
       draw_playhead(ps);
     }
   }
-  if (cur_pattern != pattern_drawn || playing != playing_drawn) {
-    pattern_drawn = cur_pattern;
+  if (shown() != pattern_drawn || playing != playing_drawn) { /* the next pattern started: show it */
+    if (shown() != pattern_drawn) {
+      if (page == PG_PATTERN) {
+        draw_body();
+      }
+      draw_knobs();
+    }
+    pattern_drawn = (uint8_t)shown();
     playing_drawn = playing;
     draw_transport();
   }

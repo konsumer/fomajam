@@ -92,9 +92,10 @@ int text_height(int font);
 int midi_read(uint8_t *status, uint8_t *d1, uint8_t *d2); /* 1: got one */
 void midi_send(uint8_t status, uint8_t d1, uint8_t d2);
 
-/* ---- settings: up to SETTINGS_MAX bytes that survive power-off (one 4 KiB flash sector, less a header). Saving stalls the sound for ~50 ms:
+/* ---- settings: up to SETTINGS_MAX bytes that survive power-off (three 4 KiB flash sectors, less a header). Saving stalls the sound for
+ * ~50 ms a sector:
  * save when nothing plays, never in a loop (flash wears out) */
-#define SETTINGS_MAX 4084u
+#define SETTINGS_MAX 12276u
 int settings_load(void *p, uint32_t n); /* 0: loaded; else p is untouched */
 int settings_save(const void *p, uint32_t n);
 

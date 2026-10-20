@@ -52,9 +52,11 @@ static volatile uint32_t fm1_ms; /* milliseconds since power-on (TIMER5) */
 #define FELUCCA_UAC_OUT 1 /* a computer or tablet plays through the FM-1 too */
 #include "usb.c"
 
-/* ---- flash: read anywhere; erase / program only the update's staging area and the settings sector */
+/* ---- flash: read anywhere; erase / program only the update's staging area and the settings sectors
+ * (Felucca's globals, 0xFC000..0xFF000: below them are the update records, above the MAC key) */
 #define SETTINGS_AT 0x000FC000u
-#define FL_RANGE_OK(off, n) (FL_IN(off, n, FL_OTA_LO, FL_OTA_HI) || FL_IN(off, n, SETTINGS_AT, SETTINGS_AT + 0x1000u))
+#define SETTINGS_END 0x000FF000u
+#define FL_RANGE_OK(off, n) (FL_IN(off, n, FL_OTA_LO, FL_OTA_HI) || FL_IN(off, n, SETTINGS_AT, SETTINGS_END))
 #include "fm1_flash.h"
 static uint8_t flash_ok;
 static int st_read(uint32_t off, void *dst, uint32_t n) {
@@ -136,44 +138,50 @@ static void screen_flush(void) {
   fb_y1 = 0;
 }
 
-/* ---- settings: [magic][length][crc32] then the bytes, in one 4 KiB sector */
+/* ---- settings: [magic][length][crc32] then the bytes, across up to three 4 KiB sectors */
 #define SETTINGS_MAGIC 0x414D4F46u /* "FOMA" */
-static uint32_t crc32(const uint8_t *p, uint32_t n) {
-  uint32_t c = 0xFFFFFFFFu, k;
+_Static_assert(SETTINGS_MAX + 12u <= SETTINGS_END - SETTINGS_AT, "the settings must fit their sectors");
+static uint32_t crc32(uint32_t c, const uint8_t *p, uint32_t n) {
+  uint32_t k;
   while (n--) {
     c ^= *p++;
     for (k = 0; k < 8u; k++) {
       c = c & 1u ? (c >> 1) ^ 0xEDB88320u : c >> 1;
     }
   }
-  return ~c;
+  return c;
 }
-static uint8_t settings_buf[SETTINGS_MAX]; /* the flash driver wants RAM */
 int settings_load(void *p, uint32_t n) {
-  uint8_t *buf = settings_buf;
-  uint32_t h[3];
+  uint8_t buf[256]; /* the flash driver wants RAM */
+  uint32_t h[3], c = 0xFFFFFFFFu;
   if (!flash_ok || n > SETTINGS_MAX || st_read(SETTINGS_AT, h, sizeof h) || h[0] != SETTINGS_MAGIC || h[1] != n) {
     return -1;
   }
-  if (st_read(SETTINGS_AT + sizeof h, buf, n) || crc32(buf, n) != h[2]) {
+  for (uint32_t at = 0; at < n; at += sizeof buf) { /* check it all before p is touched */
+    uint32_t k = n - at < sizeof buf ? n - at : sizeof buf;
+    if (st_read(SETTINGS_AT + sizeof h + at, buf, k)) {
+      return -1;
+    }
+    c = crc32(c, buf, k);
+  }
+  if (~c != h[2]) {
     return -1;
   }
-  memcpy(p, buf, n);
-  return 0;
+  return st_read(SETTINGS_AT + sizeof h, p, n) ? -1 : 0;
 }
-int settings_save(const void *p, uint32_t n) {
-  uint8_t *buf = settings_buf;
+int settings_save(const void *p, uint32_t n) { /* p is in RAM (the flash driver wants it) */
   uint32_t h[3] = {SETTINGS_MAGIC, n, 0}, took;
   int rc;
   if (!flash_ok || n > SETTINGS_MAX) {
     return -1;
   }
-  memcpy(buf, p, n);
-  h[2] = crc32(buf, n);
-  if ((rc = fl_erase4k(SETTINGS_AT, &took)) != 0) {
-    return rc;
+  h[2] = ~crc32(0xFFFFFFFFu, p, n);
+  for (uint32_t at = SETTINGS_AT; at < SETTINGS_AT + sizeof h + n; at += 0x1000u) { /* only the sectors it needs */
+    if ((rc = fl_erase4k(at, &took)) != 0) {
+      return rc;
+    }
   }
-  if ((rc = fl_write(SETTINGS_AT + sizeof h, buf, n)) != 0) {
+  if ((rc = fl_write(SETTINGS_AT + sizeof h, p, n)) != 0) {
     return rc;
   }
   return fl_write(SETTINGS_AT, (const uint8_t *)h, sizeof h); /* the header last: a cut save stays invalid */

@@ -7,7 +7,7 @@
  *   build/render --synths [DIR]     the same checks for every synth preset (and writes a .wav of each to DIR)
  *   build/render --calibrate        rewrites src/gains.h, bringing each modeled voice to its TARGET peak
  *   build/render --wav DIR          writes a .wav of every machine and voice
- *   build/render --song FILE [N]    8 seconds of the song the firmware starts with (pattern N, 1-8)
+ *   build/render --song FILE [N]    8 seconds of the song the firmware starts with (pattern N, 1-40)
  *   build/render --midi             the MIDI messages a MIDI track and the clock send in one bar, with times
  *
  * The panel and screen are stubbed out here, and sine() and note_inc() use floating point (the FM-1 doesn't). */
@@ -48,6 +48,7 @@ int button_pressed(int b) { return 0; }
 uint32_t keys(void) { return 0; }
 void led_key(int k, int o) {}
 void led_button(int b, int o) {}
+void led_backlight(int l) {}
 int midi_read(uint8_t *a, uint8_t *b, uint8_t *c) { return 0; }
 static int midi_log;
 static uint32_t frame_now;
@@ -242,7 +243,7 @@ int main(int argc, char **argv) {
     static int32_t b[512];
     setup();
     if (argc > 3) {
-      song.pattern = (uint8_t)(atoi(argv[3]) - 1);
+      song.pattern = (uint8_t)(atoi(argv[3]) > 0 && atoi(argv[3]) <= PATTERNS ? atoi(argv[3]) - 1 : 0);
     }
     playing = 1;
     long peak = 0, over = 0;

@@ -5,8 +5,8 @@
 
 #define TRACKS 9 /* each plays one machine: a drum machine, or a synth engine */
 #define STEPS 16
-#define PATTERNS 8
-#define SONG_VERSION 7
+#define PATTERNS 40 /* as many as fit the settings */
+#define SONG_VERSION 8
 
 /* a step: what plays (a drum machine's voice, or a synth's MIDI note) and how */
 #define STEP_ON 1
@@ -45,8 +45,7 @@ typedef struct {
   uint16_t mute; /* bit t: track t is silent */
   uint8_t pattern, clock; /* clock: 1 sends MIDI clock (and start / stop) */
   track_t track[TRACKS];
-  pattern_t pat[PATTERNS];
-  /* (added in version 7: a version 6 song loads without them) */
+  /* (added in version 7) */
   uint8_t rsize, rdamp;   /* the reverb */
   uint8_t crate, cdepth;  /* the chorus */
   uint8_t pump;           /* how fast a ducked track comes back */
@@ -54,17 +53,24 @@ typedef struct {
   uint8_t dtype;          /* the distortion's kind (D_*); DRIVE is song.drive */
   uint8_t ccout;          /* 1: parameters changed here are sent out as MIDI CC (CC.md) */
   uint8_t lights;         /* the keys' backlight: 0 off, 1 low, 2 full (was padding: a saved song has 0) */
+  pattern_t pat[PATTERNS]; /* last since version 8 (8 of them before, between track[] and rsize) */
 } song_t;
 
 _Static_assert(sizeof(song_t) <= SETTINGS_MAX, "the song must fit in the settings");
-_Static_assert(sizeof(song_t) == 2686, "a version 7 song is 2686 bytes: a new field needs SONG_VERSION + 1");
+_Static_assert(sizeof(song_t) == 11902, "a version 8 song is 11902 bytes: a new field needs SONG_VERSION + 1");
+/* the songs before: version 7 had 8 patterns after track[] and the effects after them; version 6 no effects */
+#define SONG_HEAD __builtin_offsetof(song_t, rsize)               /* up to the patterns, in every version */
+#define SONG_FX (__builtin_offsetof(song_t, pat) - SONG_HEAD)     /* rsize .. lights */
+#define SONG6_SIZE (SONG_HEAD + 8 * sizeof(pattern_t))
+#define SONG7_SIZE (SONG6_SIZE + SONG_FX)
+_Static_assert(SONG7_SIZE == 2686, "a version 7 song was 2686 bytes");
 
 extern song_t song; /* written by loop() only; audio() reads it */
 
 /* ---- the engine (engine.c). Written by loop(): */
 extern volatile uint8_t playing;
 /* written by audio(): */
-extern volatile uint8_t cur_pattern;   /* the pattern playing (song.pattern takes over at the next bar) */
+extern volatile uint8_t cur_pattern;   /* the pattern playing (song.pattern takes over when it ends) */
 extern volatile int8_t play_step;      /* -1: stopped */
 extern volatile uint16_t hits[TRACKS]; /* counts each sound started, for the screen */
 extern volatile uint8_t cpu_load, cpu_peak; /* how much of each block's time audio() used, in % (FM-1 only) */
