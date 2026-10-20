@@ -73,24 +73,20 @@ _Static_assert(SONG7_SIZE == 2686, "a version 7 song was 2686 bytes");
 
 extern song_t song; /* written by loop() only; audio() reads it */
 
-/* ---- the engine (engine.c). Written by loop(), and by audio() when it follows MIDI clock (start / stop): */
+/* ---- the engine (engine.c). Written by audio(): loop() starts and stops it with clock_start() / clock_stop() */
 extern volatile uint8_t playing;
-/* written by audio(): */
 extern volatile uint8_t cur_pattern;   /* the pattern playing (song.pattern takes over when it ends) */
 extern volatile int8_t play_step;      /* -1: stopped */
 extern volatile uint16_t hits[TRACKS]; /* counts each sound started, for the screen */
-extern volatile uint8_t cpu_load, cpu_peak;
-extern volatile uint16_t ext_bpm;      /* the tempo of the MIDI clock coming in (song.sync), 0: none */ /* how much of each block's time audio() used, in % (FM-1 only) */
+extern volatile uint8_t cpu_load, cpu_peak; /* how much of each block's time audio() used, in % (FM-1 only) */
 #define SCOPE_LEN 1024
 extern int16_t scope[SCOPE_LEN];   /* the last of the output, for the screen's oscilloscope */
 extern volatile uint32_t scope_at; /* where the next frame goes (it only counts up) */
 
-void engine_tempo(void);             /* after bpm, swing or delay time change */
+void engine_tempo(void);             /* after the tempo or the delay time change */
 void live_on(int t, int v, int vel); /* play track t now: a drum voice, or a synth note (held) */
 void live_off(int t, int v);         /* let a synth note go */
-void midi_out(int status, int d1, int d2); /* a message out over USB MIDI, sent by audio() (its only sender) */
-int midi_take(uint8_t *status, uint8_t *d1, uint8_t *d2); /* a channel message in, from song.midiin: audio() reads MIDI
-                                                         * (it keeps the clock) and passes these on. 0: none */
+void midi_out(int status, int d1, int d2); /* a message out over USB MIDI, sent by audio() (in order with the notes) */
 
 /* ---- the machines: the modeled drums, the ROM drums, SMP (samples/) if there are any, the synth engines */
 int machine_count(void);

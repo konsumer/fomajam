@@ -189,9 +189,9 @@ Its SOUND page has three pages of knobs:
 
 With `SYNC` on `EXT`, the FM-1 follows the clock from `MIDI IN` instead: a step every 6 ticks, and start, stop and
 continue from the other device. `PLAY` still works, but nothing moves until the clock does. The header shows the
-clock's tempo (`--` until one comes), and `BPM` and `SWING` wait until you go back to `INT`. With `CLOCK` on too, the
-ticks are passed on over USB, so a computer can follow a drum machine on the TRS jack. Pick one source in `MIDI IN`
-when both send clock.
+clock's tempo (`--` until one comes), and the delay time and `SWING` follow it; `BPM` waits until you go back to
+`INT`. With `CLOCK` on too, the ticks are passed on over USB, so a computer can follow a drum machine on the TRS jack.
+Pick one source in `MIDI IN` when both send clock.
 
 ## Samples
 
@@ -212,10 +212,8 @@ color the drum voices: kicks use the first, snares the second, claps the third, 
 Over one USB cable, the FM-1 is a class-compliant audio and MIDI device. It needs no driver on a computer, an iPad
 or a phone.
 
-- **Audio from the FM-1:** a 44.1 kHz (or 48 kHz) stereo input on the computer, so you can record what you hear.
 - **Audio to the FM-1:** a 44.1 kHz stereo output. Pick the FM-1 as the output on your computer or iPad, and its
-  sound plays through the FM-1 mixed with the FM-1's own. The MASTER knob sets the volume of both. It is not sent
-  back on the FM-1's audio input, so recording that input doesn't capture what you're playing to it.
+  sound plays through the FM-1 mixed with the FM-1's own. The MASTER knob sets the volume of both.
 - **MIDI in and out:** see above.
 
 ## Key lights
@@ -255,7 +253,7 @@ To hear and check the sound without an FM-1 (after a build, which creates `build
 
 ```sh
 cc -O2 -Isrc -Iplatform -Ibuild/gen -Ivendor/felucca-engines/src -Ivendor/felucca -D__wasm__ \
-  -o build/render test/render.c src/{drums,engine,main,synths}.c -lm
+  -o build/render test/render.c src/{drums,engine,main,synths,fx}.c -lm
 build/render --check          # every drum voice sounds, stays in range and dies away
 build/render --wav /tmp/kit   # a .wav for every machine and voice
 build/render --synths         # the same checks for every synth preset
@@ -263,7 +261,8 @@ build/render --song song.wav  # 8 seconds of the starting song (add N for patter
 build/render --midi           # the MIDI messages a MIDI track and the clock send in one bar, with their times
 ```
 
-The functions the firmware can call are in [platform/fm1.h](platform/fm1.h). The name, version and package identity
+The functions the firmware can call are in [platform/fm1.h](platform/fm1.h): it's [foma](https://github.com/konsumer/foma)'s
+platform, with its USB audio, TRS MIDI and MIDI clock options on. The name, version, package identity and those options
 are in [firmware.json](firmware.json). The rules of the chip (no floating point, keep `audio()` short, and so on) are
 in [foma's README](https://github.com/konsumer/foma#the-rules-of-the-chip).
 

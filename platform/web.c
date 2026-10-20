@@ -24,6 +24,13 @@ typedef struct { /* as gfx.c */
 #define HALF_FRAMES 256u
 
 static uint32_t now_ms, now_us, fb_gen;
+#if FOMA_MIDI_CLOCK
+#define CLOCK_MUL ((uint64_t)44100u * 4294967296u / 1000000u) /* now_us -> frames */
+#include "clock.c"
+#endif
+#if FOMA_USB_AUDIO
+const int32_t *audio_in(void) { return 0; } /* (the emulator has no audio from a computer yet) */
+#endif
 
 uint32_t millis(void) { return now_ms; }
 uint32_t micros(void) { return now_us; }
@@ -115,6 +122,12 @@ static void screen_flush(void) {
 static uint32_t mq_in[MQ], mq_out[MQ], mi_w, mi_r, mo_w, mo_r;
 EXPORT(web_midi_in)
 void web_midi_in(uint32_t st, uint32_t d1, uint32_t d2) {
+#if FOMA_MIDI_CLOCK
+  if (st >= 0xF8u) {
+    clock_in(st, MIDI_USB, now_us);
+    return;
+  }
+#endif
   if (mi_w - mi_r < MQ) {
     mq_in[mi_w++ % MQ] = (st & 0xFFu) | (d1 & 0x7Fu) << 8 | (d2 & 0x7Fu) << 16;
   }
@@ -132,10 +145,7 @@ int midi_read(uint8_t *status, uint8_t *d1, uint8_t *d2) {
   *status = (uint8_t)m;
   *d1 = (uint8_t)(m >> 8);
   *d2 = (uint8_t)(m >> 16);
-  if (*status >= 0xF8) { /* when it came: as the FM-1 has it */
-    *d1 = (uint8_t)(now_us >> 6), *d2 = (uint8_t)(now_us >> 14);
-  }
-  return MIDI_USB;
+  return MIDI_USB; /* (the page's MIDI in stands for USB) */
 }
 void midi_send(uint8_t status, uint8_t d1, uint8_t d2) {
   if (mo_w - mo_r < MQ) {
@@ -215,6 +225,9 @@ static void tick(void) {
     for (i = 0; i < 2u * HALF_FRAMES; i++) {
       blk[i] = 0;
     }
+#if FOMA_MIDI_CLOCK
+    clock_block(HALF_FRAMES, now_us);
+#endif
     audio(blk, HALF_FRAMES);
     for (i = 0; i < HALF_FRAMES; i++) {
       uint32_t r = (ring_w++ % RING) * 2u, c;

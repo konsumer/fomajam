@@ -47,12 +47,15 @@ static volatile uint32_t fm1_ms; /* milliseconds since power-on (TIMER5) */
 #define HALF_FRAMES 256u /* I2S half buffer: 5.8 ms */
 #define HALF_WORDS (HALF_FRAMES * 2u)
 #define FELUCCA_OTA 1
-#define FELUCCA_CDC 0
-#define FELUCCA_UAC 1
-#define FELUCCA_UAC_OUT 1                            /* a computer or tablet plays through the FM-1 too */
-#define MIDI_STAMP() ((fm1_micros() >> 6) & 0xFFFFu) /* in midi_read: micros() >> 6 */
+#if FOMA_MIDI_CLOCK
+#define CLOCK_MUL ((uint64_t)44100u * 4294967296u / (1000000u * FM1_TICKS_PER_US)) /* TIMER4 ticks -> frames */
+#include "clock.c"
+#define MIDI_RT(status, source) clock_in(status, source, fm1_ticks()) /* clock and transport: the helper's */
+#endif
 #include "usb.c"
+#if FOMA_TRS_MIDI
 #include "midi_uart.c"
+#endif
 
 /* ---- flash: read anywhere; erase / program only the update's staging area and the settings sectors
  * (Felucca's globals, 0xFC000..0xFF000: below them are the update records, above the MAC key) */
@@ -189,7 +192,7 @@ int settings_save(const void *p, uint32_t n) { /* p is in RAM (the flash driver 
   return fl_write(SETTINGS_AT, (const uint8_t *)h, sizeof h); /* the header last: a cut save stays invalid */
 }
 
-/* ---- MIDI in from USB (cable 0) and the TRS jack (cable 1); out over USB */
+/* ---- MIDI in from USB (cable 0) and the TRS jack (cable 1); out over USB, from loop() or audio() */
 int midi_read(uint8_t *status, uint8_t *d1, uint8_t *d2) {
   uint32_t pk;
   if (mi_r == mi_w) {
@@ -203,8 +206,9 @@ int midi_read(uint8_t *status, uint8_t *d1, uint8_t *d2) {
   return pk & 0x10u ? MIDI_TRS : MIDI_USB;
 }
 void midi_send(uint8_t status, uint8_t d1, uint8_t d2) {
-  uint32_t st = status;
+  uint32_t st = status, f = irq_save(); /* (loop() and audio() may both send) */
   midi_out_event((st >> 4) | st << 8 | (uint32_t)(d1 & 0x7Fu) << 16 | (uint32_t)(d2 & 0x7Fu) << 24);
+  irq_restore(f);
 }
 
 /* ---- time */
@@ -288,15 +292,22 @@ void fm1_timer5_irq(void) {
   if (++sub == 10u) {
     sub = 0;
   }
-  if (in_audio) {
+  if (in_audio) { /* (the audio from the host keeps coming, and a clock on the TRS jack keeps its time) */
+#if FOMA_USB_AUDIO
     if (usb_due) {
-      uac_service();
+      uo_service();
     }
+#endif
+#if FOMA_TRS_MIDI
+    uart_midi_poll();
+#endif
     return;
   }
   if (owed) {
     usb_poll();
+#if FOMA_TRS_MIDI
     uart_midi_poll();
+#endif
   }
   owed = 0;
 }
@@ -305,6 +316,11 @@ extern void isr_timer5(void);
 /* ---- the sound: ALNK0 I2S, two halves; the app renders, MASTER scales, Q15 -> 24 bit (-6 dBFS ceiling) */
 static int32_t abuf[2u * HALF_WORDS] __attribute__((aligned(4)));
 static volatile int32_t master_q12 = 2048;
+#if FOMA_USB_AUDIO
+static int32_t ain[HALF_WORDS]; /* this block of the host's audio (audio_in) */
+static int ain_on;
+const int32_t *audio_in(void) { return ain_on ? ain : 0; }
+#endif
 
 void fm1_alnk0_irq(void) { /* via isr_alnk0 (hal/fm1_isr.S) */
   uint8_t p;
@@ -313,21 +329,22 @@ void fm1_alnk0_irq(void) { /* via isr_alnk0 (hal/fm1_isr.S) */
   fm1_audio_ack_aux(p);
   if (p & FM1_AUDIO_HALF) {
     int32_t *o = &abuf[fm1_audio_free_half() * HALF_WORDS];
-    uint32_t i, b;
+    uint32_t i;
     for (i = 0; i < HALF_WORDS; i++) {
       o[i] = 0;
     }
-    uac_render_start();
+#if FOMA_USB_AUDIO
+    ain_on = usb_audio_take(ain, HALF_FRAMES);
+#endif
+#if FOMA_MIDI_CLOCK
+    clock_block(HALF_FRAMES, fm1_ticks());
+#endif
     audio(o, HALF_FRAMES);
     for (i = 0; i < HALF_WORDS; i++) {
       int32_t v = (o[i] * master_q12) >> 12;
       o[i] = v > 32767 ? 32767 : v < -32767 ? -32767
                                             : v;
     }
-    for (b = 0; b < HALF_FRAMES; b += 32u) {
-      uac_tap(o + 2u * b, 32u); /* the computer records what the speaker plays */
-    }
-    uac_play(o, HALF_FRAMES, master_q12); /* and plays through it (after the tap: never sent back) */
     for (i = 0; i < HALF_WORDS; i++) {
       o[i] <<= 7;
     }
@@ -435,7 +452,9 @@ void fm1_cstart(void) {
   fm1_adc_init();
   fm1_audio_init(abuf, HALF_WORDS, isr_alnk0, 3); /* (abuf is zero: .bss) */
   usb_start();
+#if FOMA_TRS_MIDI
   uart_midi_init();
+#endif
   fm1_timer5_start(isr_timer5, 4);
   fm1_guard_lock_top();
   fm1_irq_enable_all();

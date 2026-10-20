@@ -2,8 +2,9 @@
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* MIDI IN on the TRS jack: PH8 -> input channel 1 -> UART1 RX, 31250 baud, RX DMA into a 128-byte ring,
  * polled from the TIMER5 ISR (no UART IRQ), in the same place as usb_poll (it shares the MIDI ring).
- * Channel messages and clock / start / continue / stop go into midi_in_q next to USB's, as USB-MIDI
- * packets on cable 1; other realtime, system common and SysEx are ignored (no SysEx->UBOOT from TRS).
+ * Channel messages go into midi_in_q next to USB's, as USB-MIDI packets on cable 1; clock / start / continue /
+ * stop to MIDI_RT (or the ring, as usb.c); other realtime, system common and SysEx are ignored (no SysEx->UBOOT
+ * from TRS). FOMA_TRS_MIDI=0 leaves it out.
  * From Felucca's midi_uart.c. */
 #include "fm1_uart.h"
 
@@ -28,8 +29,8 @@ static void um_put(uint32_t pkt) {
 
 static void um_byte(uint32_t b) {
   if (b >= 0xF8u) {
-    if (b == 0xF8u || b == 0xFAu || b == 0xFBu || b == 0xFCu) {
-      um_put(0xFu | b << 8 | MIDI_STAMP() << 16);
+    if ((b == 0xF8u || b == 0xFAu || b == 0xFBu || b == 0xFCu) && !MIDI_RT(b, 2)) {
+      um_put(0xFu | b << 8);
     }
     return; /* realtime keeps running status */
   }

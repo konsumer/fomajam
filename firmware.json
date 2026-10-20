@@ -1,5 +1,10 @@
 {
   "name": "FOMAJAM",
   "version": "0.1",
-  "identity": "FM-1_96"
+  "identity": "FM-1_96",
+  "options": {
+    "usb_audio": true,
+    "trs_midi": true,
+    "midi_clock": true
+  }
 }
