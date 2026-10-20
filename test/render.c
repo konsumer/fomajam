@@ -49,6 +49,16 @@ uint32_t keys(void) { return 0; }
 void led_key(int k, int o) {}
 void led_button(int b, int o) {}
 void led_backlight(int l) {}
+/* the platform's MIDI clock at the song's tempo, a block before each audio() as on the FM-1 */
+#define CLOCK_MUL ((uint64_t)44100u * 4294967296u / 1000000u)
+#include "clock.c"
+const int32_t *audio_in(void) { return 0; }
+static void block(int32_t *b) {
+  clock_tempo(song.bpm * 100u);
+  clock_send(song.clock);
+  clock_block(256, 0);
+  audio(b, 256);
+}
 int midi_read(uint8_t *a, uint8_t *b, uint8_t *c) { return 0; }
 static int midi_log;
 static uint32_t frame_now;
@@ -201,13 +211,13 @@ int main(int argc, char **argv) {
     engine_tempo();
     printf("machine %s, 122 BPM: a 16th is %.1f ms\n", machine_name(song.track[0].machine), 60000.0 / 122 / 4);
     midi_log = 1;
-    playing = 1;
+    clock_start();
     for (frame_now = 0; frame_now < 44100 * 6 / 10; frame_now += 256) {
       memset(b, 0, sizeof b);
-      audio(b, 256);
+      block(b);
     }
-    playing = 0;
-    audio(b, 256);
+    clock_stop();
+    block(b);
     return 0;
   }
   if (!strcmp(mode, "--calibrate")) {
@@ -245,11 +255,11 @@ int main(int argc, char **argv) {
     if (argc > 3) {
       song.pattern = (uint8_t)(atoi(argv[3]) > 0 && atoi(argv[3]) <= PATTERNS ? atoi(argv[3]) - 1 : 0);
     }
-    playing = 1;
+    clock_start();
     long peak = 0, over = 0;
     for (uint32_t i = 0; i < 44100 * 8; i += 256) {
       memset(b, 0, sizeof b);
-      audio(b, 256);
+      block(b);
       for (int j = 0; j < 512; j++) {
         long a = labs(b[j]);
         peak = a > peak ? a : peak;

@@ -660,12 +660,20 @@ static void track_title(int t, char *out, int label) { /* "3 909 CH", "9 ANALOG 
   append(out, i, voice_name(machine_of(t), song.track[t].voice));
 }
 
+/* the MIDI clock (fm1.h): the song's tempo, or with SYNC on EXT the clock coming in on MIDI IN; CLOCK sends it */
+static void clock_setup(void) {
+  clock_follow(song.sync ? (song.midiin ? song.midiin : MIDI_ANY) : 0);
+  clock_send(song.clock);
+  clock_tempo(song.bpm * 100u);
+}
+
 /* the tempo: the song's, or following a clock in, the clock's (-- before one comes) */
 static void tempo_text(char *s) {
-  if (song.sync && !ext_bpm) {
+  uint32_t ext = (clock_bpm() + 50) / 100;
+  if (song.sync && !ext) {
     s[0] = '-', s[1] = '-', s[2] = 0;
   } else {
-    format_int(s, song.sync ? ext_bpm : song.bpm);
+    format_int(s, song.sync ? (int32_t)ext : song.bpm);
   }
 }
 
@@ -1247,7 +1255,10 @@ static void changed(int id) { /* a parameter changed: show it where it shows (an
     draw_all();
     return;
   }
-  if (id == P_BPM || id == P_SWING || id == P_DTIME) {
+  if (id == P_BPM || id == P_SYNC || id == P_MIDIIN || id == P_CLOCK) {
+    clock_setup();
+  }
+  if (id == P_BPM || id == P_SYNC || id == P_DTIME) {
     engine_tempo();
   }
   if (id == P_BPM || id == P_SYNC) {
@@ -1468,12 +1479,9 @@ static const uint8_t SONG_CC[][2] = {
 #define N_SONG_CC (int)(sizeof SONG_CC / sizeof SONG_CC[0])
 static int from_midi; /* the change came in as a CC: don't send it back */
 
-static void set_playing(int on) {
+static void set_playing(int on) { /* the engine starts and stops with the clock (soon: the next block) */
   if (on != playing) {
-    playing = (uint8_t)on;
-    if (!on) {
-      stopped_at = millis();
-    }
+    on ? clock_start() : clock_stop();
   }
 }
 
@@ -1679,7 +1687,10 @@ static void midi_note(int t, int on, int off, int d1, int d2) {
 
 static void midi_in(void) {
   uint8_t st, d1, d2;
-  while (midi_take(&st, &d1, &d2)) {
+  for (int src; (src = midi_read(&st, &d1, &d2));) {
+    if (song.midiin && song.midiin != src) { /* MIDI IN: from USB or TRS only */
+      continue;
+    }
     mlog[mlog_n % MLOG][0] = st, mlog[mlog_n % MLOG][1] = d1, mlog[mlog_n % MLOG][2] = d2; /* for the MIDI IN page */
     mlog_n++;
     int ch = st & 0x0F;
@@ -1887,6 +1898,7 @@ void setup(void) {
     }
   }
   sanitize();
+  clock_setup();
   engine_tempo();
   draw_all();
 }
@@ -2078,11 +2090,12 @@ void loop(void) {
       draw_playhead(ps);
     }
   }
-  static uint16_t tempo_drawn;
-  static uint32_t tempo_at;
-  if (song.sync && ext_bpm != tempo_drawn && (now - tempo_at > 250 || !ext_bpm)) { /* following a clock: its tempo */
-    tempo_drawn = ext_bpm;
+  static uint32_t tempo_drawn, tempo_at;
+  uint32_t ext = (clock_bpm() + 50) / 100;
+  if (song.sync && ext != tempo_drawn && (now - tempo_at > 250 || !ext)) { /* following a clock: its tempo */
+    tempo_drawn = ext;
     tempo_at = now;
+    engine_tempo(); /* (the delay follows it) */
     draw_transport();
     if (page == PG_GLOBAL) {
       draw_global();

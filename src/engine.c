@@ -1,10 +1,10 @@
 /* FOMAJAM's sound: the step sequencer, MIDI out, the mix (sends and ducking), the delay and the output. The
- * drum machines are in drums.c, the synth engines in synths.c, and the other effects in fx.c. Everything runs in 32-frame blocks (as Felucca's engines do), and steps
- * start on a block boundary. This code runs in audio(): integers only, no screen, no flash.
+ * drum machines are in drums.c, the synth engines in synths.c, and the other effects in fx.c. Everything runs in
+ * 32-frame blocks (as Felucca's engines do), and steps start on a block boundary. This code runs in audio():
+ * integers only, no screen, no flash.
  *
- * audio() is the only place that sends MIDI, because the USB queue allows only one writer. It sends MIDI
- * tracks' notes and note-offs, the clock, and whatever loop() queues with midi_out() (controllers, program
- * changes, notes played live). */
+ * The steps follow the platform's MIDI clock (fm1.h clock_*): a step every 6 ticks, its own tempo or one coming in,
+ * with start and stop. MIDI tracks' notes and whatever loop() queues with midi_out() go out from here, in order. */
 #include "groove.h"
 
 song_t song;
@@ -13,11 +13,10 @@ volatile uint8_t cur_pattern;
 volatile int8_t play_step = -1;
 volatile uint16_t hits[TRACKS];
 volatile uint8_t cpu_load, cpu_peak;
-volatile uint16_t ext_bpm;
 int16_t scope[SCOPE_LEN];
 volatile uint32_t scope_at;
 
-static volatile uint32_t len_even = 5512, len_odd = 5512, dlen = 11025; /* in frames, from engine_tempo() */
+static volatile uint32_t dlen = 11025; /* the delay, in frames, from engine_tempo() */
 
 static int clamp(int v, int lo, int hi) {
   return v < lo ? lo : v > hi ? hi
@@ -53,22 +52,6 @@ void live_on(int t, int v, int vel) { push(EV_ON, t, v, vel); }
 void live_off(int t, int v) { push(EV_OFF, t, v, 0); }
 void midi_out(int status, int d1, int d2) { push(EV_MIDI, status, d1, d2); }
 
-/* ---- MIDI in: audio() reads it all, keeps the clock and passes the rest to loop() */
-static struct {
-  uint8_t st, d1, d2;
-} fwd[QLEN];
-static volatile uint8_t f_head, f_tail; /* audio() writes the head, loop() the tail */
-
-int midi_take(uint8_t *status, uint8_t *d1, uint8_t *d2) {
-  uint8_t t = f_tail;
-  if (t == f_head) {
-    return 0;
-  }
-  *status = fwd[t].st, *d1 = fwd[t].d1, *d2 = fwd[t].d2;
-  f_tail = (t + 1) & (QLEN - 1);
-  return 1;
-}
-
 /* ---- MIDI tracks: the note each has sounding, and the frames until its note-off */
 static uint8_t m_note[TRACKS], m_on[TRACKS];
 static int32_t m_left[TRACKS]; /* -1: held (played live) */
@@ -103,13 +86,14 @@ static void m_tick(uint32_t n) { /* the note-offs due in this block */
   }
 }
 
-/* ---- the clock */
+/* ---- the clock: a 16th's frames at the tempo (the song's, or the clock's coming in) */
+static uint32_t step_base(void) {
+  uint32_t bpm100 = clock_bpm();
+  return bpm100 >= 2000 ? 66150000u / bpm100 : 661500u / (song.bpm < 40 ? 40 : song.bpm); /* 44100 * 60 / 4 */
+}
+
 void engine_tempo(void) {
-  uint32_t base = 661500u / (song.bpm < 40 ? 40 : song.bpm); /* frames per 16th */
-  uint32_t even = 2 * base * (200 + song.swing) / 400;       /* swing 0..100: 50% .. 75% of the pair */
-  len_even = even;
-  len_odd = 2 * base - even;
-  uint32_t d = song.dtime * base;
+  uint32_t d = song.dtime * step_base();
   dlen = d >= 44100 ? 44099 : d;
 }
 
@@ -143,11 +127,8 @@ static void rat_tick(uint32_t n) {
   }
 }
 
-static int32_t ctr;             /* frames to the next step */
-static uint32_t ext_q4;         /* following a clock: a tick's length in frames, Q4 (0: none yet) */
-static uint8_t ext_phase;       /* the tick in the step: a step every 6 */
-static uint32_t step_frames;    /* the step playing's length */
-static uint32_t clk_acc, clk_n; /* MIDI clock: 6 ticks per 16th note, the first on the step */
+static uint8_t tick6;    /* the clock's tick in the step: a step on every 6th */
+static int32_t swing_in; /* a swung step waiting: the frames until it plays (-1: none) */
 
 static void next_step(void) {
   int len = song.length < 1 ? 1 : song.length > STEPS ? STEPS
@@ -158,14 +139,8 @@ static void next_step(void) {
   }
   play_step = (int8_t)s;
   const pattern_t *p = &song.pat[cur_pattern];
-  uint32_t step_len = song.sync ? (ext_q4 ? ext_q4 * 6 >> 4 : len_even) : (s & 1) ? len_odd
-                                                                                  : len_even;
-  step_frames = step_len;
-  if (song.clock && !song.sync) { /* (following a clock, each tick in is passed on: ext_tick) */
-    midi_send(0xF8, 0, 0);
-    clk_acc = 0;
-    clk_n = 1;
-  }
+  uint32_t base = step_base(), even = 2 * base * (200 + song.swing) / 400; /* swing 0..100: 50% .. 75% of the pair */
+  uint32_t step_len = (s & 1) ? 2 * base - even : even;
   for (int t = 0; t < TRACKS; t++) {
     uint8_t f = p->flag[t][s];
     rat[t].left = 0;
@@ -192,42 +167,44 @@ static void next_step(void) {
                                          : (int32_t)(step_len * (d->gate ? d->gate : 1) / 100u);
     hit(t, p->val[t][s], vel, slide_in, gate);
   }
-  if (!song.sync) {
-    ctr += (int32_t)step_len; /* (any overshoot from the last step is taken off this one, so the tempo stays exact) */
-  }
 }
 
-/* a clock tick in at frame at (of all frames played): the tempo from the ticks, and a step every 6 */
-static uint32_t ext_last;
-static uint8_t ext_on; /* ticks are coming (a gap over 1 s: they stopped) */
-static void ext_tick(uint32_t at) {
-  uint32_t d = at - ext_last;
-  ext_last = at;
-  if (ext_on && d < 44100 && (!ext_q4 || d << 4 < ext_q4 * 3)) { /* (not a pause in the clock) */
-    ext_q4 = ext_q4 ? ext_q4 + (uint32_t)(((int32_t)(d << 4) - (int32_t)ext_q4) >> 2) : d << 4;
-    ext_bpm = (uint16_t)(ext_q4 ? 1764000u / ext_q4 : 0); /* 44100 * 60 / 24, Q4 */
+/* a tick while playing: every 6th starts a step, an odd one late by the swing */
+static void tick(void) {
+  if (!tick6) {
+    int len = song.length < 1 ? 1 : song.length > STEPS ? STEPS
+                                                        : song.length;
+    int s = play_step + 1 >= len ? 0 : play_step + 1;
+    swing_in = (s & 1) ? (int32_t)(step_base() * song.swing / 200) : 0; /* (the pair's share past half) */
   }
-  ext_on = 1;
-  if (song.clock) {
-    midi_send(0xF8, 0, 0);
-  }
-  if (playing) {
-    if (!ext_phase) {
-      next_step();
+  tick6 = (uint8_t)((tick6 + 1) % 6);
+}
+
+/* start (from the top, or continue where it stopped) and stop: the notes, MIDI programs */
+static void transport(int on, int resume) {
+  static int8_t stop_step;
+  static uint8_t stop_tick;
+  if (!on) {
+    stop_step = play_step, stop_tick = tick6;
+    play_step = -1;
+    swing_in = -1;
+    synths_stop();
+    for (int t = 0; t < TRACKS; t++) {
+      rat[t].left = 0;
+      m_off(t);
     }
-    ext_phase = (uint8_t)((ext_phase + 1) % 6);
-  }
-}
-
-static void clock_tick(uint32_t n) { /* send the step's other five clock ticks when they are due */
-  if (!song.clock || clk_n >= 6) {
     return;
   }
-  clk_acc += n * 6;
-  while (clk_n < 6 && clk_acc >= step_frames) {
-    clk_acc -= step_frames;
-    midi_send(0xF8, 0, 0);
-    clk_n++;
+  play_step = resume ? stop_step : -1;
+  tick6 = resume ? stop_tick : 0;
+  swing_in = -1;
+  if (!resume) {
+    cur_pattern = song.pattern;
+    for (int t = 0; t < TRACKS; t++) { /* each MIDI track's program, as the song starts */
+      if (is_midi(t) && song.track[t].prog) {
+        midi_send((uint8_t)(0xC0 | (song.track[t].mch & 15)), (uint8_t)(song.track[t].prog - 1), 0);
+      }
+    }
   }
 }
 
@@ -272,45 +249,12 @@ static void render(uint32_t at, uint32_t n) {
 }
 
 void audio(int32_t *out, uint32_t frames) {
-  static uint8_t was, cont, stop_phase;
-  static int8_t stop_step;
-  static uint32_t avg, peak, frame_pos, t_prev; /* avg, peak: Q8 % */
+  static uint8_t was;
+  static uint32_t avg, peak; /* Q8 % */
   uint32_t t0 = micros();
   if (frames > 256) {
     frames = 256;
   }
-  /* MIDI in: channel messages to loop(); following a clock, its ticks placed in this block by when they came
-   * (between the last block and this one: the sound is a block late, but steady), and start / continue / stop */
-  uint8_t st, d1, d2, tick_at[24], ticks = 0;
-  for (int src; (src = midi_read(&st, &d1, &d2));) {
-    if (song.midiin && song.midiin != src) {
-      continue;
-    }
-    if (st < 0xF8) {
-      uint8_t h = f_head, next = (h + 1) & (QLEN - 1);
-      if (next != f_tail) {
-        fwd[h].st = st, fwd[h].d1 = d1, fwd[h].d2 = d2;
-        f_head = next;
-      }
-    } else if (!song.sync) {
-      continue;
-    } else if (st == 0xF8) {
-      int16_t d = (int16_t)((d1 | d2 << 8) - (t_prev >> 6)); /* 64 us units: 2.8224 frames */
-      uint32_t at = d < 0 ? 0 : (uint32_t)d * 2822u / 1000u;
-      if (ticks < sizeof tick_at) {
-        tick_at[ticks++] = (uint8_t)(at >= frames ? frames - 1 : at);
-      }
-    } else { /* start from the top, continue from where it stopped, stop */
-      if (st == 0xFA) {
-        play_step = -1;
-        ext_phase = 0;
-      }
-      cont = st == 0xFB && !playing;
-      playing = st != 0xFC;
-      ticks = 0;
-    }
-  }
-  t_prev = t0;
   for (uint32_t i = 0; i < frames; i++) {
     mix[i] = snd[i] = rsnd[i] = csnd[i] = 0;
   }
@@ -336,65 +280,44 @@ void audio(int32_t *out, uint32_t frames) {
     }
     q_tail = (q + 1) & (QLEN - 1);
   }
-  if (playing != was) {
+  if (playing != was) { /* (set directly: the tests) */
     was = playing;
-    if (!playing) {
-      stop_step = play_step, stop_phase = ext_phase;
-    }
-    play_step = cont ? stop_step : -1;
-    ext_phase = cont ? stop_phase : 0;
-    cont = 0;
-    ctr = 0;
-    if (!playing) {
-      synths_stop();
-      for (int t = 0; t < TRACKS; t++) {
-        rat[t].left = 0;
-      }
-      for (int t = 0; t < TRACKS; t++) {
-        m_off(t);
-      }
-      if (song.clock) {
-        midi_send(0xFC, 0, 0); /* stop */
-      }
-    } else {
-      cur_pattern = song.pattern;
-      for (int t = 0; t < TRACKS; t++) { /* each MIDI track's program, as the song starts */
-        if (is_midi(t) && song.track[t].prog) {
-          midi_send((uint8_t)(0xC0 | (song.track[t].mch & 15)), (uint8_t)(song.track[t].prog - 1), 0);
-        }
-      }
-      if (song.clock) {
-        midi_send(0xFA, 0, 0); /* start */
-      }
-    }
+    transport(playing, 0);
   }
-  if (!playing) {
-    cur_pattern = song.pattern;
-  }
-  if (frame_pos - ext_last > 44100) { /* no clock for 1 s */
-    ext_q4 = 0;
-    ext_bpm = 0;
-    ext_on = 0;
-  }
-  for (uint32_t i = 0, tk = 0; i < frames; i += 32) {
+  const clock_event_t *ev;
+  int nev = clock_events(&ev), e = 0;
+  for (uint32_t i = 0; i < frames; i += 32) {
     uint32_t n = frames - i < 32 ? frames - i : 32;
-    while (tk < ticks && tick_at[tk] < i + n) {
-      ext_tick(frame_pos + tick_at[tk++]);
-    }
-    if (playing && !song.sync) {
-      if (ctr <= 0) {
-        next_step();
+    for (; e < nev && ev[e].at < i + n; e++) { /* the clock's ticks, start, continue, stop in this block */
+      int what = ev[e].what;
+      if (what == CLOCK_TICK) {
+        if (playing) {
+          tick();
+        }
+      } else if (what == CLOCK_STOP) {
+        if (playing) {
+          playing = was = 0;
+          transport(0, 0);
+        }
+      } else if (what == CLOCK_START || !playing) { /* (continue only from stopped) */
+        playing = was = 1;
+        transport(1, what == CLOCK_CONTINUE);
       }
-      ctr -= (int32_t)n;
-      clock_tick(n);
     }
     if (playing) {
+      if (swing_in >= 0 && swing_in < (int32_t)n) {
+        swing_in = -1;
+        next_step();
+      } else if (swing_in >= 0) {
+        swing_in -= (int32_t)n;
+      }
       rat_tick(n);
+    } else {
+      cur_pattern = song.pattern;
     }
     m_tick(n);
     render(i, n);
   }
-  frame_pos += frames;
   int32_t fb = song.dfdbk * 230;
   uint32_t dl = dlen;
   for (uint32_t i = 0; i < frames; i++) { /* the delay */
@@ -416,6 +339,12 @@ void audio(int32_t *out, uint32_t frames) {
     out[2 * i + 1] += y;
     scope[(scope_at + i) & (SCOPE_LEN - 1)] = (int16_t)clamp(y, -32767, 32767);
   }
+#if FOMA_USB_AUDIO
+  const int32_t *in = audio_in(); /* a computer playing to the FM-1: added to the output as it comes (stereo) */
+  for (uint32_t i = 0; in && i < 2 * frames; i++) {
+    out[i] += in[i];
+  }
+#endif
   scope_at += frames;
   /* how long that took, of the time the block lasts (22.676 us a frame): smoothed, and the peak held a while */
   uint32_t load = (micros() - t0) * 100u * 256u / (frames * 22676u / 1000u + 1u);
