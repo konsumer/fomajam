@@ -8,7 +8,7 @@ A groovebox firmware for the M-VAVE FM-1, made with [foma](https://github.com/ko
   - **synths:** [Felucca](https://github.com/hugelton/Felucca)'s engines (ANALOG, LOFI, TRIO, WHEEL, NOISE, PHASE,
     VOICE, PHYS), plus STRING (Karplus-Strong) and SUPERSAW (JP-8000 style), all with presets
   - **MIDI out**, to sequence other gear
-- 8 patterns of 16 steps, with accents, slides and ratchets
+- 40 patterns of 16 steps, with accents, slides and ratchets
 - effects: delay, reverb and chorus sends, kick ducking, a master filter and 11 kinds of distortion
 - MIDI clock, and color themes
 
@@ -19,18 +19,18 @@ Try it in your browser, and install it on the FM-1 from Chrome or Edge: <https:/
 Every page has the same layout: a **header** (page, track, pattern, tempo, play/stop), the **body**, and the **knob
 bar**. The knob bar shows what KNOB1–4 do on the current page, always in the same four colors.
 
-| Control     | What it does                                                                         |
-| ----------- | ------------------------------------------------------------------------------------ |
-| `SELECT`    | Choose the track (1–9).                                                              |
-| `PRESETS`   | Choose the pattern (1–8). While playing, the change happens at the end of the bar.   |
-| `ALGORITHM` | Set the tempo.                                                                       |
-| `PLAY`      | Start or stop.                                                                       |
-| `REC`       | Record what you play into the pattern.                                               |
-| `SAVE`      | Save the song. If it's playing, it saves when you stop (saving pauses the sound).    |
-| `SEL`       | Show the next page of knobs. On PATTERN with a synth track: toggle slide on a step.  |
-| `ARP`       | On PATTERN: set the ratchet of the step under the cursor.                            |
-| `ENV`       | Clear the pattern. It asks first: `OCT+` clears, `OCT-` cancels.                     |
-| `OCT-/OCT+` | Change the keyboard's octave. When a question is shown, `OCT+` is yes, `OCT-` is no. |
+| Control     | What it does                                                                                   |
+| ----------- | ---------------------------------------------------------------------------------------------- |
+| `SELECT`    | Choose the track (1–9).                                                                        |
+| `PRESETS`   | Choose the pattern (1–40). While playing, the one you stop on plays when the current one ends. |
+| `ALGORITHM` | Set the tempo.                                                                                 |
+| `PLAY`      | Start or stop.                                                                                 |
+| `REC`       | Record what you play into the pattern.                                                         |
+| `SAVE`      | Save the song. If it's playing, it saves when you stop (saving pauses the sound).              |
+| `SEL`       | Show the next page of knobs. On PATTERN with a synth track: toggle slide on a step.            |
+| `ARP`       | On PATTERN: set the ratchet of the step under the cursor.                                      |
+| `ENV`       | Clear the pattern. It asks first: `OCT+` clears, `OCT-` cancels.                               |
+| `OCT-/OCT+` | Change the keyboard's octave. When a question is shown, `OCT+` is yes, `OCT-` is no.           |
 
 | Button       | Page                | Keys                                            | Knobs                                                                                                                   |
 | ------------ | ------------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
@@ -39,7 +39,7 @@ bar**. The knob bar shows what KNOB1–4 do on the current page, always in the s
 | `HOME`       | MIX                 | white keys: mute tracks 1–9; black keys: tracks | LEVEL, DELAY, REVERB, MUTE                                                                                              |
 | `HOME` again | SCOPE, then MIDI IN | play the track                                  | the MIX knobs. SCOPE shows the output; MIDI IN lists the last messages that came in. `HOME` once more goes back to MIX. |
 | `FX`         | FX                  | play the track                                  | 4 pages (press `SEL`): see [Effects](#effects)                                                                          |
-| `GLO`        | GLOBAL              | play the track                                  | TEMPO page: BPM, SWING, LENGTH, THEME; SETUP page: CLOCK, CC OUT, LIGHTS. Also shows CPU load.                                   |
+| `GLO`        | GLOBAL              | play the track                                  | TEMPO page: BPM, SWING, LENGTH, THEME; SETUP page: CLOCK, CC OUT, LIGHTS. Also shows CPU load.                          |
 
 **Playing the keys:** on a synth track, the keys are a keyboard. On a drum track, they play the machine's kit: the
 white keys are BD SD CH OH CP RS LT MT HT CY RD CB TB MA CL TI, and the black keys are BD2 SD2 CB2 and the congas. (On
