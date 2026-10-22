@@ -228,6 +228,11 @@ saved from the FM-1 (`fomajam-kits.bin`).
   with the emulator. Choose a folder to keep the setups in, such as an SD card's `setups`.
 - Without one: [fm1buddy](https://github.com/konsumer/fm1buddy) keeps them on its SD card, in `/setups`, the same way.
 
+For other gear, **Export** (on the page, or fm1buddy) writes a setup's patterns as MIDI files in `midi/` (one for each
+pattern with steps: drum tracks on channel 10 with General MIDI drum notes, the others on channels 1-9, with the
+song's tempo, swing, accents, ratchets and slides) and its kits as `.wav` files in `kits/` (which load back as the same
+kits). [web/fm1song.js](web/fm1song.js) and [web/fm1bank.js](web/fm1bank.js) say how.
+
 How they talk is in [platform/src/share.c](platform/src/share.c) (and [web/fm1share.js](web/fm1share.js) for the other
 side), so another helper can do the same.
 

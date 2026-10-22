@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // fomajam's sample bank (src/drums.c: the store's kits, the machines after MIDI): folders of .wav files made into what
-// the store holds (fm1share.js block 1), and read back out of one. fm1buddy makes the same bank on its own.
+// the store holds (fm1share.js block 1), and read back out of one (as .wav files again, for other samplers). fm1buddy
+// makes the same bank on its own.
 //
 // A kit is a folder: its name is the machine's name. When every file in it is named after a drum voice (bd.wav,
 // sd.wav, ch.wav, ...: VOICES), it's a drum kit: it plays as the other drum machines (and its voices that are missing
@@ -202,4 +203,66 @@ export function describe(b) {
     out.push({ name: text(o), drum: !!b[o + 10], samples })
   }
   return out
+}
+
+// a sample's ADPCM back to 16-bit (as the firmware plays it)
+function decode(data, len, idx) {
+  const out = new Int16Array(len)
+  let pred = 0
+  for (let n = 0; n < len; n++) {
+    const code = (data[n >> 1] >> ((n & 1) << 2)) & 15
+    const step = STEP[idx]
+    let diff = step >> 3
+    if (code & 4) diff += step
+    if (code & 2) diff += step >> 1
+    if (code & 1) diff += step >> 2
+    pred = clamp(code & 8 ? pred - diff : pred + diff, -32768, 32767)
+    idx = clamp(idx + INDEX[code & 7], 0, 88)
+    out[n] = pred
+  }
+  return out
+}
+
+// 16-bit mono samples at rate as a .wav
+export function wavFile(x, rate) {
+  const b = new Uint8Array(44 + x.length * 2)
+  const d = new DataView(b.buffer)
+  b.set(text4('RIFF'), 0)
+  d.setUint32(4, 36 + x.length * 2, true)
+  b.set(text4('WAVE'), 8)
+  b.set(text4('fmt '), 12)
+  d.setUint32(16, 16, true)
+  d.setUint16(20, 1, true)
+  d.setUint16(22, 1, true)
+  d.setUint32(24, rate, true)
+  d.setUint32(28, rate * 2, true)
+  d.setUint16(32, 2, true)
+  d.setUint16(34, 16, true)
+  b.set(text4('data'), 36)
+  d.setUint32(40, x.length * 2, true)
+  x.forEach((v, i) => d.setInt16(44 + 2 * i, v, true))
+  return b
+}
+const text4 = (s) => [...s].map((c) => c.charCodeAt(0))
+
+// a bank's kits as folders of .wav files, as kit() takes them back: [{ name, files: [{ name, bytes }] }] (a drum kit's
+// named after its voices, bd.wav; the others numbered in their order, 01-kick.wav)
+export function unpack(b) {
+  const kits = describe(b)
+  if (!kits) throw new Error('not a kits file')
+  const d = new DataView(b.buffer, b.byteOffset, b.byteLength)
+  const base = 8 + 12 * b[4]
+  return kits.map((k, i) => {
+    const o = 8 + 12 * i
+    const files = []
+    for (let s = 0; s < b[o + 9]; s++) {
+      const e = base + 20 * (b[o + 8] + s)
+      const off = d.getUint32(e + 8, true)
+      const len = d.getUint32(e + 12, true)
+      const x = decode(b.subarray(off, off + (len + 1) / 2), len, b[e + 18])
+      const name = k.drum ? `${VOICES[b[e + 19]].toLowerCase()}.wav` : `${String(s + 1).padStart(2, '0')}-${k.samples[s].name.toLowerCase()}.wav`
+      files.push({ name, bytes: wavFile(x, d.getUint16(e + 16, true)) })
+    }
+    return { name: k.name, files }
+  })
 }

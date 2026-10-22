@@ -3,7 +3,8 @@
 import { productOf, logicalImage } from './fm1pkg.js'
 import { Updater } from './fm1ota.js'
 import { info as shareInfo, readBlock, writeBlock, SONG, SAMPLES } from './fm1share.js'
-import { kit, build as buildBank, describe } from './fm1bank.js'
+import { kit, build as buildBank, describe, unpack } from './fm1bank.js'
+import { songMidi } from './fm1song.js'
 
 const $ = (id) => document.getElementById(id)
 const DEV = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)
@@ -673,6 +674,7 @@ const app = () => (build ? build.name : 'FOMAJAM').toLowerCase().replace(/[^a-z0
 const songFile = () => `${app()}.bin`
 const kitsFile = () => `${app()}-kits.bin`
 const KITS_DIR = 'kits'
+const MIDI_DIR = 'midi'
 let setupsDir = null
 let songBytes = null // the file chosen
 let songBusy = false
@@ -845,14 +847,48 @@ async function listSetups() {
     dim.className = 'dim'
     dim.textContent = ` ${has}`
     span.append(dim)
+    const exp = document.createElement('button')
+    exp.textContent = 'Export'
+    exp.title = `its patterns as MIDI files (${MIDI_DIR}/), and its kits as .wav files (${KITS_DIR}/)`
+    exp.addEventListener('click', () => exportSetup(r))
     li.append(
       span,
+      exp,
       sureButton('Load', 'Sure? It replaces what it has', async (link) => loadSetup(link, { song: r.song && (await fileBytes(r.song)), bank: !r.kitsDir && r.bank && (await fileBytes(r.bank)), kitsDir: r.kitsDir }))
     )
     ul.append(li)
   }
   if (!rows.length) ul.innerHTML = `<li class="dim">No setups in this folder yet.</li>`
   songSetBusy(songBusy)
+}
+
+// for other gear: a setup's patterns as MIDI files in midi/, and its kits (as saved) as .wav files in kits/
+async function exportSetup(r) {
+  songSetBusy(true)
+  try {
+    const done = []
+    const dir = await setupsDir.getDirectoryHandle(r.name)
+    if (r.song) {
+      const mids = songMidi(await fileBytes(r.song))
+      const md = await dir.getDirectoryHandle(MIDI_DIR, { create: true })
+      for (const m of mids) await writeFile(md, m.name, m.bytes)
+      done.push(`${mids.length} pattern${mids.length === 1 ? '' : 's'} as MIDI files in ${MIDI_DIR}/`)
+    }
+    if (r.bank && !r.kitsDir) {
+      const kd = await dir.getDirectoryHandle(KITS_DIR, { create: true })
+      const kits = unpack(await fileBytes(r.bank))
+      for (const k of kits) {
+        const d = await kd.getDirectoryHandle(k.name, { create: true })
+        for (const f of k.files) await writeFile(d, f.name, f.bytes)
+      }
+      done.push(`its kits as .wav files in ${KITS_DIR}/`)
+    }
+    songStatus(done.length ? `${r.name}: ${done.join(', and ')}.` : `${r.name}: nothing to export (its kits are .wav files already).`, 100)
+    await listSetups()
+  } catch (e) {
+    songStatus(`Error: ${e.message}`)
+  }
+  songSetBusy(false)
 }
 
 if (!window.showDirectoryPicker) {

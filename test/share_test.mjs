@@ -5,7 +5,8 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { info, readBlock, writeBlock, frame, SONG, SAMPLES } from '../web/fm1share.js'
-import { readWav, kit, build as buildBank, describe, label } from '../web/fm1bank.js'
+import { readWav, kit, build as buildBank, describe, label, unpack } from '../web/fm1bank.js'
+import { songMidi, readSong, drumTracks } from '../web/fm1song.js'
 
 const assert = (c, m) => {
   if (!c) {
@@ -160,3 +161,25 @@ if (existsSync(render)) {
   const out = execFileSync(render, ['--bank', file]).toString()
   assert(/MYKIT \(a drum kit\): BD peak [1-9]\d{3,} CH peak [1-9]\d{3,}/.test(out) && /LOOPS \(one a key\): KICK peak [1-9]\d{3,} HAT peak [1-9]\d{3,}/.test(out), `the firmware plays it: ${out.trim().replace(/\n/g, '; ')}`)
 }
+
+// for other gear: the kits back as .wav files (that make the same kits again), and the song as MIDI files
+const files = unpack(bank)
+assert(files.map((k) => `${k.name}:${k.files.map((f) => f.name).join('+')}`).join() === 'MYKIT:bd.wav+ch.wav,LOOPS:01-kick.wav+02-hat.wav', 'kits as .wav files: MYKIT/bd.wav ...')
+const again = describe(buildBank(files.map((k) => kit(k.name, k.files))))
+assert(again.map((k) => `${k.name}:${k.drum}:${k.samples.map((s) => s.name).join('+')}`).join() === names.map((k) => `${k.name}:${k.drum}:${k.samples.map((s) => s.name).join('+')}`).join(), 'and they make the same kits again')
+
+const s9 = await readBlock(link)
+const mids = songMidi(s9)
+const notes = (m) => {
+  let n = 0
+  for (let i = 14; i < m.length;) {
+    const len = (m[i + 4] << 24) | (m[i + 5] << 16) | (m[i + 6] << 8) | m[i + 7]
+    for (let k = i + 8; k < i + 8 + len - 2; k++) if ((m[k] & 0xf0) === 0x90 && m[k + 2] > 0 && m[k + 1] < 128) n++
+    i += 8 + len
+  }
+  return n
+}
+const head = mids[0] && String.fromCharCode(...mids[0].bytes.subarray(0, 4))
+assert(mids.length >= 1 && head === 'MThd' && mids.every((m) => notes(m.bytes) > 0), `the song as MIDI files: ${mids.map((m) => `${m.name} (${notes(m.bytes)} notes)`).join(', ')}`)
+const dr = drumTracks(readSong(s9))
+assert(dr[0] && !dr[8], 'track 1 (drums) on channel 10, track 9 (the bass) not')
