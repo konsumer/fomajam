@@ -231,42 +231,41 @@ Each model has its own package, because M-VAVE's updater only takes a keyboard's
 
 The FM-1's controls are on the SMK-37's panel, so everything above applies:
 
-| FM-1           | SMK-37                                                 |
-| -------------- | ------------------------------------------------------ |
-| MASTER         | K1                                                     |
-| `SELECT`       | K2                                                     |
-| `ALGORITHM`    | K3                                                     |
-| `PRESETS`      | K4                                                     |
-| KNOB1–4        | K5–K8                                                  |
-| `SEL`          | SCALE                                                  |
-| `ENV`          | CHORD                                                  |
-| `EDIT`         | PARA                                                   |
-| `HOME`         | PATCH                                                  |
-| `GLO`          | GLOBE                                                  |
-| `SAVE`         | BT                                                     |
-| `ARP`          | ARP                                                    |
-| `SEQ`          | SEQ                                                    |
-| `FX`           | FX                                                     |
-| `PLAY` / `REC` | SEQ PLAY / SEQ REC                                     |
-| `OCT-/OCT+`    | OCTAVE- / OCTAVE+                                      |
-| the 27 keys    | the middle 27 keys (F3–G5)                             |
-| the white keys | also the 16 pads, top row first: on PATTERN, the steps |
+| FM-1           | SMK-37                                                                   |
+| -------------- | ------------------------------------------------------------------------ |
+| MASTER         | K1                                                                       |
+| `SELECT`       | K2                                                                       |
+| `ALGORITHM`    | K3                                                                       |
+| `PRESETS`      | K4                                                                       |
+| KNOB1–4        | FADER1–4 (each sets the control's whole range), and K5–K8 (step by step) |
+| `SEQ`          | SEQ (PATTERN)                                                            |
+| `EDIT`         | PATCH (SOUND)                                                            |
+| `HOME`         | PARA (MIX, SCOPE, MIDI IN)                                               |
+| `FX`           | FX                                                                       |
+| `GLO`          | GLOBE (GLOBAL)                                                           |
+| `SEL`          | SCALE, or KNOB BANK (KNOB BANK never toggles a slide)                    |
+| `ARP`          | NOTE REPEAT (the ratchet)                                                |
+| `ENV`          | CHORD (clear the pattern)                                                |
+| `SAVE`         | BT                                                                       |
+| `PLAY` / `REC` | SEQ PLAY / SEQ REC                                                       |
+| `OCT-/OCT+`    | OCTAVE- / OCTAVE+                                                        |
+| the 27 keys    | the middle 27 keys (F3–G5)                                               |
+| the white keys | also the 16 pads, top row first: on PATTERN, the steps                   |
 
-And what only the SMK-37 has:
+A fader takes over once you move it (also after a page, track or bank change), so nothing jumps. And what only the
+SMK-37 has:
 
-| SMK-37        | What it does                                                                                             |
-| ------------- | -------------------------------------------------------------------------------------------------------- |
-| keys and pads | play with velocity (the keys use the keyboard's own factory calibration)                                 |
-| pitch wheel   | bends the chosen track ±2 semitones; on a MIDI track it sends pitch bend                                 |
-| mod wheel     | vibrato on the chosen track; on a MIDI track it sends CC 1                                               |
-| faders        | the levels of four tracks. A fader takes over once you move it, so nothing jumps                         |
-| FADER BANK    | which four: tracks 1–4, 5–8, or 9 (lit when not 1–4)                                                     |
-| KNOB BANK     | the next page of knobs, like SCALE (`SEL`), but never a slide on the PATTERN page                        |
-| `<` / `>`     | the pattern before or after (playing, it plays when the current one ends)                                |
-| pad colors    | the screen's: steps in their track or drum-voice color, the playhead white, the MIX page in track colors |
+| SMK-37        | What it does                                                                                                     |
+| ------------- | ---------------------------------------------------------------------------------------------------------------- |
+| keys and pads | play with velocity (the keys use the keyboard's own factory calibration)                                         |
+| PITCH wheel   | bends the chosen track ±2 semitones; on a MIDI track it sends pitch bend                                         |
+| MOD wheel     | vibrato on the chosen track; on a MIDI track it sends CC 1                                                       |
+| FADER BANK    | makes the faders a mixer: the levels of tracks 1–4, then 5–8, then 9, then back to the screen (lit while mixing) |
+| `<` / `>`     | the pattern before or after (playing, it plays when the current one ends)                                        |
+| pad colors    | the screen's: steps in their track or drum-voice color, the playhead white, the MIX page in track colors         |
 
-The black keys' lights (the tracks on the PATTERN page) have no place on the SMK-37. Not used yet: the outer 10 keys
-and the pedal. The SMK-37 has no MIDI in on its TRS jack, so MIDI in is USB only.
+The black keys' lights (the tracks on the PATTERN page) have no place on the SMK-37. Not used yet: ARP (there is no
+arpeggiator), the outer 10 keys and the pedal. The SMK-37 has no MIDI in on its TRS jack, so MIDI in is USB only.
 
 The SMK-37 build has not been tested on a keyboard yet. It uses the hardware map and board code of the
 [SMK-37 port kit](https://github.com/genkigenki/fm1-to-smk37) (genkigenki), which other FM-1 firmwares run on, and it

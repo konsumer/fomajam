@@ -36,7 +36,18 @@ enum { PG_PATTERN,
        PG_MIDI,  /* and again */
        PAGES };
 static const char *const PAGE_NAME[PAGES] = {"PATTERN", "SOUND", "MIX", "FX", "GLOBAL", "SCOPE", "MIDI IN"};
-static const uint8_t PAGE_BTN[PAGES] = {BTN_SEQ, BTN_EDIT, BTN_HOME, BTN_FX, BTN_GLO, BTN_HOME, BTN_HOME};
+/* the buttons by what they do. The SMK-37's labels differ: PATCH opens the sound, PARA the mix, NOTE REPEAT sets a
+ * ratchet (there is no arpeggiator here, so its ARP is free) */
+#if FOMA_SMK37
+#define B_SOUND BTN_PATCH
+#define B_MIX BTN_PARA
+#define B_RATCHET BTN_NOTE_REPEAT
+#else
+#define B_SOUND BTN_EDIT
+#define B_MIX BTN_HOME
+#define B_RATCHET BTN_ARP
+#endif
+static const uint8_t PAGE_BTN[PAGES] = {BTN_SEQ, B_SOUND, B_MIX, BTN_FX, BTN_GLO, B_MIX, B_MIX};
 
 static int page, sub, track, cursor, octave = -1, rec;
 static const theme_t *th;
@@ -1938,27 +1949,42 @@ static void wheels(void) {
   mod_was = m;
 }
 
-/* ---- the SMK-37's faders: the levels of four tracks, FADER BANK picks which (1-4, 5-8, 9). A fader takes over only
- * once it moves (also after a bank change), so nothing jumps. (The FM-1 has none) */
-#define FBANKS ((TRACKS + FADER_COUNT - 1) / FADER_COUNT)
+/* ---- the SMK-37's faders: the four on-screen controls, like KNOB1-4 (K5-K8), but each sets its whole range. FADER
+ * BANK turns them into a mixer instead: the levels of tracks 1-4, 5-8 or 9, then back. A fader takes over only once
+ * it moves (also after what it controls changes: page, track, bank), so nothing jumps. (The FM-1 has none) */
+#define FBANKS (1 + (TRACKS + FADER_COUNT - 1) / FADER_COUNT) /* 0: the screen; 1..: the mixer */
 static int fbank;
+static void fader_set(int id, int val) { /* a fader's 0..127 over the parameter's range, as a CC (cc_in) */
+  int lo = plo(id), hi = phi(id), v = lo + (val * (hi - lo) + 63) / 127;
+  if (id == P_VOICE || id == P_STVOICE) {
+    v = id == P_STVOICE && val < 4 ? -1 : nearest_voice(machine_of(track), v < 0 ? 0 : v); /* (the bottom: a rest) */
+  }
+  if (v != pget(id)) {
+    pset(id, v);
+    changed(id);
+  }
+}
 static void faders(void) {
-  static int last[FADER_COUNT] = {-1, -1, -1, -1}, bank_was;
-  if (fbank != bank_was) {
-    bank_was = fbank;
-    for (int i = 0; i < FADER_COUNT; i++) {
+  static int last[FADER_COUNT] = {-1, -1, -1, -1}, what[FADER_COUNT];
+  for (int i = 0; i < FADER_COUNT; i++) {
+    int v = fader(i), t = (fbank - 1) * FADER_COUNT + i;
+    int w = fbank ? 1000 + t : knobs[i] << 8 | track; /* what it controls now */
+    if (w != what[i]) {
+      what[i] = w;
       last[i] = -1;
     }
-  }
-  for (int i = 0; i < FADER_COUNT; i++) {
-    int v = fader(i), t = fbank * FADER_COUNT + i;
     if (v < 0 || v == last[i]) {
       continue;
     }
     int moved = last[i] >= 0;
     last[i] = v;
-    if (moved && t < TRACKS) {
+    if (!moved) {
+      continue;
+    }
+    if (fbank && t < TRACKS) {
       cc_in(0, t, 7, v); /* as CC 7 does: the track's LEVEL, shown where it shows */
+    } else if (!fbank && knobs[i] != P_NONE && has_param(knobs[i])) {
+      fader_set(knobs[i], v);
     }
   }
 }
@@ -1995,7 +2021,7 @@ static void leds(void) {
     led_button(PAGE_BTN[i], PAGE_BTN[i] == PAGE_BTN[page]);
   }
   led_button(BTN_ENV, ask_until != 0);
-  led_button(BTN_ARP, page == PG_PATTERN && (pat()->flag[track][cursor] & (STEP_ON | STEP_RAT)) > STEP_ON);
+  led_button(B_RATCHET, page == PG_PATTERN && (pat()->flag[track][cursor] & (STEP_ON | STEP_RAT)) > STEP_ON);
   led_button(BTN_SEL, page == PG_PATTERN ? is_synth(track) && pget(P_STSLIDE) : subpages() > 1);
   led_button(BTN_PLAY, playing && (play_step & 3) != 3);
   led_button(BTN_REC, rec);
@@ -2017,10 +2043,10 @@ void loop(void) {
   if (button_pressed(BTN_SEQ)) {
     set_page(PG_PATTERN);
   }
-  if (button_pressed(BTN_EDIT)) {
+  if (button_pressed(B_SOUND)) {
     set_page(PG_SOUND);
   }
-  if (button_pressed(BTN_HOME)) { /* MIX, then SCOPE, then MIDI IN, then MIX */
+  if (button_pressed(B_MIX)) { /* MIX, then SCOPE, then MIDI IN, then MIX */
     set_page(page == PG_MIX ? PG_SCOPE : page == PG_SCOPE ? PG_MIDI
                                                           : PG_MIX);
   }
@@ -2053,7 +2079,7 @@ void loop(void) {
     toast("CLEAR? OCT+");
     toast_until = ask_until;
   }
-  if (button_pressed(BTN_ARP) && page == PG_PATTERN) { /* the cursor's step: its ratchet, x1 .. x8, round */
+  if (button_pressed(B_RATCHET) && page == PG_PATTERN) { /* the cursor's step: its ratchet, x1 .. x8, round */
     uint8_t *f = &pat()->flag[track][cursor];
     int r = ((*f & STEP_RAT) >> RAT_SHIFT) + 1;
     r = r >= RATCHETS ? 0 : r;
@@ -2090,7 +2116,7 @@ void loop(void) {
     set_playing(!playing);
   }
   if (button_pressed(BTN_FADER_BANK)) { /* the SMK-37's own buttons */
-    static const char *const BANK[FBANKS] = {"FADERS 1-4", "FADERS 5-8", "FADER 9"};
+    static const char *const BANK[FBANKS] = {"FADERS ON SCREEN", "FADERS LEVEL 1-4", "FADERS LEVEL 5-8", "FADER LEVEL 9"};
     fbank = (fbank + 1) % FBANKS;
     toast(BANK[fbank]);
   }

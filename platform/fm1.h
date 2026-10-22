@@ -69,6 +69,17 @@ enum {
   BTN_RIGHT,
   BTN_COUNT
 };
+/* the SMK-37's buttons by their labels: each is the FM-1 button it stands for (OCTAVE-/+, FX, ARP and SEQ have the
+ * FM-1's names; KNOB BANK, FADER BANK, < and > are above) */
+#define BTN_SCALE BTN_SEL
+#define BTN_CHORD BTN_ENV
+#define BTN_NOTE_REPEAT BTN_LFO
+#define BTN_PARA BTN_EDIT
+#define BTN_GLOBE BTN_GLO
+#define BTN_PATCH BTN_HOME
+#define BTN_BT BTN_SAVE
+#define BTN_SEQ_PLAY BTN_PLAY
+#define BTN_SEQ_REC BTN_REC
 uint32_t buttons(void); /* bit b: button b held */
 int button_held(int b);
 int button_pressed(int b);
