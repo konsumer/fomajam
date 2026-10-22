@@ -1,18 +1,20 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Sharing (platform/src/share.c): the firmware's block (fomajam's song) read from the FM-1 or the emulator, and
-// written back. The same messages fm1buddy sends, in M-VAVE's frames (F0 pack7(00 59 cmd len24 body ~sum) F7), each
-// asked and answered with the same command:
+// Sharing (platform/src/share.c): the firmware's blocks read from the FM-1 or the emulator, and written back: block 0
+// is fomajam's song, block 1 its samples (fm1bank.js). The same messages fm1buddy sends, in M-VAVE's frames
+// (F0 pack7(00 59 cmd len24 body ~sum) F7), each asked and answered with the same command:
 //
-//   0x50 INFO                              -> 01, size u32, chunk u16, name[16], version[8]
-//   0x51 READ   off u32, len u16           -> off u32, len u16, the bytes
-//   0x52 WRITE  off u32, total u32, bytes  -> off u32, status   (off 0 starts over; a piece sent again is fine)
-//   0x53 DONE   total u32, crc16 u16       -> status
+//   0x50 INFO   block                            -> 01, size u32, chunk u16, name[16], version[8], block, max u32
+//   0x51 READ   block, off u32, len u16          -> off u32, len u16, the bytes
+//   0x52 WRITE  block, off u32, total u32, bytes -> off u32, status   (off 0 starts over; a piece sent again is fine)
+//   0x53 DONE   block, total u32, crc16 u16      -> status
 //
 // A link is anything with send(bytes), read(ms) (the next SysEx, or null) and drain(): fm1ota.js's for the FM-1,
 // EmuLink in app.js for the emulator.
 import { pack7, unpack7 } from './fm1ota.js'
 
 export const SHARE = { OK: 0, BUSY: 1, BAD: 2, INCOMPLETE: 3, FAILED: 4 }
+export const SONG = 0
+export const SAMPLES = 1
 const INFO = 0x50
 const READ = 0x51
 const WRITE = 0x52
@@ -24,7 +26,7 @@ const rd16 = (b, i) => b[i] | (b[i + 1] << 8)
 const rd32 = (b, i) => (rd16(b, i) | (rd16(b, i + 2) << 16)) >>> 0
 const text = (b) => String.fromCharCode(...b).replace(/\0.*$/, '')
 
-// errors carry a code the page translates: none, gone, busy, bad, incomplete, failed, unsaid
+// errors carry a code the page translates: none, gone, big, busy, bad, incomplete, failed, unsaid
 function fail(code) {
   const e = new Error(code)
   e.code = code
@@ -80,20 +82,20 @@ async function ask(link, cmd, body, good, tries = 3, ms = 1000) {
   return null
 }
 
-// what it shares: { size, chunk, name, version }, or null (it doesn't)
-export async function info(link, tries = 3) {
-  const b = await ask(link, INFO, [], (b) => b.length >= 31 && b[0] === 1, tries, 800)
-  return b && { size: rd32(b, 1), chunk: rd16(b, 5), name: text(b.slice(7, 23)), version: text(b.slice(23, 31)) }
+// what it shares in block k: { size, chunk, name, version, max }, or null (it doesn't)
+export async function info(link, k = SONG, tries = 3) {
+  const b = await ask(link, INFO, [k], (b) => b.length >= 36 && b[0] === 1 && b[31] === k, tries, 800)
+  return b && { size: rd32(b, 1), chunk: rd16(b, 5), name: text(b.slice(7, 23)), version: text(b.slice(23, 31)), max: rd32(b, 32) }
 }
 
-// its block
-export async function readBlock(link, onProgress = () => {}) {
-  const i = await info(link)
+// block k (empty: nothing in it)
+export async function readBlock(link, k = SONG, onProgress = () => {}) {
+  const i = await info(link, k)
   if (!i) throw fail('none')
   const out = new Uint8Array(i.size)
   for (let off = 0; off < i.size; off += 512) {
     const want = Math.min(512, i.size - off)
-    const b = await ask(link, READ, [...wr32(off), ...wr16(want)], (b) => b.length === 6 + want && rd32(b, 0) === off && rd16(b, 4) === want)
+    const b = await ask(link, READ, [k, ...wr32(off), ...wr16(want)], (b) => b.length === 6 + want && rd32(b, 0) === off && rd16(b, 4) === want)
     if (!b) throw fail('gone')
     out.set(b.slice(6), off)
     onProgress(off + want, i.size)
@@ -103,18 +105,20 @@ export async function readBlock(link, onProgress = () => {}) {
 
 const CODES = ['ok', 'busy', 'bad', 'incomplete', 'failed']
 
-// a block to it (which saves it); throws with the reason it gave
-export async function writeBlock(link, data, onProgress = () => {}) {
-  if (!(await info(link))) throw fail('none')
+// block k to it (which keeps it); throws with the reason it gave
+export async function writeBlock(link, k, data, onProgress = () => {}) {
+  const i = await info(link, k)
+  if (!i) throw fail('none')
+  if (data.length > i.max) throw fail('big')
   for (let off = 0; off < data.length; off += 512) {
     const piece = data.slice(off, off + 512)
-    const b = await ask(link, WRITE, [...wr32(off), ...wr32(data.length), ...piece], (b) => b.length === 5 && rd32(b, 0) === off)
+    const b = await ask(link, WRITE, [k, ...wr32(off), ...wr32(data.length), ...piece], (b) => b.length === 5 && rd32(b, 0) === off)
     if (!b) throw fail('gone')
     if (b[4] !== SHARE.OK) throw fail(CODES[b[4]] || 'bad')
     onProgress(off + piece.length, data.length)
   }
-  // once: it starts over after DONE, whatever it said (and saving takes it a moment)
-  const b = await ask(link, DONE, [...wr32(data.length), ...wr16(crc16(data))], (b) => b.length === 1, 1, 3000)
+  // (asked again, it answers as it did: checking and saving take it a moment)
+  const b = await ask(link, DONE, [k, ...wr32(data.length), ...wr16(crc16(data))], (b) => b.length === 1, 3, 5000)
   if (!b) throw fail('unsaid')
   if (b[0] !== SHARE.OK) throw fail(CODES[b[0]] || 'bad')
 }

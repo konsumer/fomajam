@@ -125,11 +125,12 @@ CL. If a machine doesn't have a voice, its closest voice plays it instead, retun
 hi-hat, so its closed hi-hat stands in). `VOICE` skips voices a machine can't play at all. A closed hi-hat cuts off
 an open one on the same track. To mix machines, give tracks different ones: a 909 kick, 808 claps, a 707 tambourine.
 
-| Machine                                         | How it's made                                                     |
-| ----------------------------------------------- | ----------------------------------------------------------------- |
-| 808, 909, SDS (SDS-V), CR78                     | modeled on how the circuits work, ported from trommelsynthesizer  |
-| 707, 606, DMX, LINN, 505, DR55, SK1, KPR77, ACE | recordings of their own ROM samples, as 4-bit ADPCM, cut at 0.8 s |
-| SMP                                             | your own samples from `samples/` (only shown when there are any)  |
+| Machine                                         | How it's made                                                            |
+| ----------------------------------------------- | ------------------------------------------------------------------------ |
+| 808, 909, SDS (SDS-V), CR78                     | modeled on how the circuits work, ported from trommelsynthesizer         |
+| 707, 606, DMX, LINN, 505, DR55, SK1, KPR77, ACE | recordings of their own ROM samples, as 4-bit ADPCM, cut at 0.8 s        |
+| SMP                                             | your own samples from `samples/` (only shown when there are any)         |
+| your kits (after MIDI)                          | up to four of your own, loaded without a new firmware: see [Kits](#kits) |
 
 The knobs work the same on every drum machine:
 
@@ -198,17 +199,33 @@ Pick one source in `MIDI IN` when both send clock.
 Put `.wav` files in `samples/`. Any PCM WAV works (8, 16 or 24-bit, mono or stereo, any sample rate). The build
 converts them to 16-bit mono at 22050 Hz, up to 2 seconds each, and they become the SMP machine: one voice per file,
 named after it (`01-boom.wav` becomes `BOOM`). Samples share flash with the ROM machines, so you may need to remove a
-ROM machine to make room.
+ROM machine to make room. To change samples without building a firmware, use [kits](#kits).
+
+## Kits
+
+Up to four drum machines of your own, loaded onto the FM-1 from `.wav` files (by the page's Songs tab, or
+fm1buddy) without installing a new firmware. They come after MIDI on the MACHINE knob, each with its own name.
+
+A kit is a folder of `.wav` files, and the folder's name is the machine's (`Boom Kit` becomes `BOOMKIT`). Name the
+files after drum voices (`bd.wav`, `bd2.wav`, `sd.wav`, `rs.wav`, `cp.wav`, `lt.wav`, `mt.wav`, `ht.wav`, `ch.wav`,
+`oh.wav`, `cy.wav`, `rd.wav`, `cb.wav`, `tb.wav`, ...) and it's a drum kit, played like the others: the voices it
+lacks are played by the ones it has, as with the ROM machines. Otherwise it plays one file a key, like SMP.
+
+They're kept in 288 KiB of the FM-1's flash (100 KiB on the SMK-37), compressed as the ROM machines are: about 25
+seconds in all. Loading them pauses the sound for a few seconds, and waits until the FM-1 is stopped. Installing
+another firmware may lose them: keep them in a setup (below) to load them again.
 
 ## Songs
 
-Keep a setup for each song you play, and load it before you play it. The song is everything `SAVE` keeps (the
-patterns, the tracks' sounds, the effects and the settings). Loading one replaces the song on the FM-1 and saves it; it
-waits until the FM-1 is stopped.
+Keep a setup for each song you play, and load it before you play it: the song (everything `SAVE` keeps: the
+patterns, the tracks' sounds, the effects and the settings) and its [kits](#kits). Loading one replaces them on the
+FM-1 and saves them; it waits until the FM-1 is stopped.
+
+A setup is a folder: `fomajam.bin` (the song), and its kits as folders of `.wav` files in `kits/`, or as they were
+saved from the FM-1 (`fomajam-kits.bin`).
 
 - On a computer: the **Songs** tab of [the page](https://konsumer.github.io/fomajam/#songs), with the FM-1 on USB or
-  with the emulator. A setup is a folder with `fomajam.bin` in it: choose a folder to keep them in, such as an SD
-  card's `setups`.
+  with the emulator. Choose a folder to keep the setups in, such as an SD card's `setups`.
 - Without one: [fm1buddy](https://github.com/konsumer/fm1buddy) keeps them on its SD card, in `/setups`, the same way.
 
 How they talk is in [platform/src/share.c](platform/src/share.c) (and [web/fm1share.js](web/fm1share.js) for the other
@@ -323,14 +340,15 @@ build/render --wav /tmp/kit   # a .wav for every machine and voice
 build/render --synths         # the same checks for every synth preset
 build/render --song song.wav  # 8 seconds of the starting song (add N for pattern N)
 build/render --midi           # the MIDI messages a MIDI track and the clock send in one bar, with their times
-build/render --share          # the song read and written as fm1buddy does it
+build/render --share          # the song and kits read and written as fm1buddy does it
+build/render --bank FILE      # a kits file (fomajam-kits.bin) played
 ```
 
 `node test/fm1ota_test.mjs` checks that the installer never writes a package to another model (an FM-1 package to an
 SMK-37, or the other way).
 
-`node test/share_test.mjs` reads and writes the song in the emulator's firmware the way the Songs tab does, losing
-some messages on the way.
+`node test/share_test.mjs` reads and writes the song and kits in the emulator's firmware the way the Songs tab does,
+losing some messages on the way (and, with `build/render`, checks that the firmware plays the kits it made).
 
 The functions the firmware can call are in [platform/fm1.h](platform/fm1.h): it's [foma](https://github.com/konsumer/foma)'s
 platform, with its USB audio, TRS MIDI and MIDI clock options on. The name, version, package identity and those options

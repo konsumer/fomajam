@@ -223,7 +223,30 @@ static void ota_commit(const uint8_t *parm) {}
 static void share_frame(uint32_t cmd, const uint8_t *b, uint32_t n);
 #define OTA_MORE share_frame
 #include "ota.c"
+/* the store (fm1.h): flash here is memory, which the page keeps (as the settings) */
+static uint8_t flash[STORE_MAX + 4096u];
+static uint32_t flash_gen;
+static const uint8_t *store_mem(void) { return flash; }
+static int store_erase(uint32_t off) {
+  memset(flash + off, 0xFF, 4096u);
+  return 0;
+}
+static int store_prog(uint32_t off, const uint8_t *p, uint32_t n) {
+  for (uint32_t i = 0; i < n; i++) {
+    flash[off + i] &= p[i]; /* as flash: only clears bits */
+  }
+  if (off == STORE_MAX) {
+    flash_gen++; /* the record: it's done */
+  }
+  return 0;
+}
 #include "share.c"
+EXPORT(web_flash)
+uint8_t *web_flash(void) { return flash; }
+EXPORT(web_flash_len)
+uint32_t web_flash_len(void) { return sizeof flash; }
+EXPORT(web_flash_gen)
+uint32_t web_flash_gen(void) { return flash_gen; }
 EXPORT(web_sysex_buf)
 uint8_t *web_sysex_buf(void) { return sx_in; }
 EXPORT(web_sysex_in)

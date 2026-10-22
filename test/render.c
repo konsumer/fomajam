@@ -8,7 +8,8 @@
  *   build/render --calibrate        rewrites src/gains.h, bringing each modeled voice to its TARGET peak
  *   build/render --wav DIR          writes a .wav of every machine and voice
  *   build/render --song FILE [N]    8 seconds of the song the firmware starts with (pattern N, 1-40)
- *   build/render --share            the song read and written as fm1buddy does it (platform/src/share.c)
+ *   build/render --share            the song and samples read and written as fm1buddy does it (platform/src/share.c)
+ *   build/render --bank FILE        a sample bank (as fm1buddy and the page make them) played as USER
  *   build/render --midi             the MIDI messages a MIDI track and the clock send in one bar, with times
  *
  * The panel and screen are stubbed out here, and sine() and note_inc() use floating point (the FM-1 doesn't). */
@@ -110,15 +111,31 @@ static int ota_fread(uint32_t off, void *p, uint32_t n) { return -1; }
 static void ota_show(uint32_t step, int32_t code) {}
 static void ota_commit(const uint8_t *parm) {}
 #include "src/ota.c"
+/* the store: flash as memory, as the emulator's */
+static uint8_t flash[STORE_MAX + 4096];
+static const uint8_t *store_mem(void) { return flash; }
+static int store_erase(uint32_t off) {
+  memset(flash + off, 0xFF, 4096);
+  return 0;
+}
+static int store_prog(uint32_t off, const uint8_t *p, uint32_t n) {
+  for (uint32_t i = 0; i < n; i++) {
+    flash[off + i] &= p[i];
+  }
+  return 0;
+}
 #include "src/share.c"
 
-/* cmd with body b (n bytes) to the FM-1, as the helper frames it; the reply's body into r, its length (-1: none) */
-static int share_ask(uint32_t cmd, const uint8_t *b, uint32_t n, uint8_t *r) {
+/* cmd for block k with body b (n bytes) to the FM-1, as the helper frames it; the reply's body into r, its length
+ * (-1: none) */
+static int share_ask(uint32_t cmd, int k, const uint8_t *b, uint32_t n, uint8_t *r) {
   static uint8_t m[1024], w[1200], d[1024];
-  uint32_t s = 0;
+  uint32_t s = k;
+  n++;
   m[0] = 0, m[1] = 0x59, m[2] = (uint8_t)cmd, m[3] = (uint8_t)n, m[4] = (uint8_t)(n >> 8), m[5] = (uint8_t)(n >> 16);
-  for (uint32_t i = 0; i < n; i++) {
-    s += m[6 + i] = b[i];
+  m[6] = (uint8_t)k;
+  for (uint32_t i = 1; i < n; i++) {
+    s += m[6 + i] = b[i - 1];
   }
   m[6 + n] = (uint8_t)~s;
   sh_in = w, sh_in_n = ota_pack7(m, 7 + n, w);
@@ -127,69 +144,153 @@ static int share_ask(uint32_t cmd, const uint8_t *b, uint32_t n, uint8_t *r) {
   if (sh_out_n < 2 || sh_out[0] != 0xF0 || sh_out[sh_out_n - 1] != 0xF7) {
     return -1;
   }
-  uint32_t k = ota_unpack7(sh_out + 1, sh_out_n - 2, d, sizeof d);
-  if (k < 7 || d[2] != cmd || ota_rd24(d + 3) + 7 != k) {
+  uint32_t got = ota_unpack7(sh_out + 1, sh_out_n - 2, d, sizeof d);
+  if (got < 7 || d[2] != cmd || ota_rd24(d + 3) + 7 != got) {
     return -1;
   }
-  memcpy(r, d + 6, k - 7);
-  return (int)(k - 7);
+  memcpy(r, d + 6, got - 7);
+  return (int)(got - 7);
 }
 
-/* a block written to the FM-1 in 512-byte pieces (each one twice: a reply lost on the way); DONE's status */
-static int share_write(const uint8_t *p, uint32_t n, int crc_off) {
+/* block k written to the FM-1 in 512-byte pieces (each one twice: a reply lost on the way); DONE's status */
+static int share_write(int k, const uint8_t *p, uint32_t n, int crc_off) {
   uint8_t b[600], r[600];
   for (uint32_t off = 0; off < n; off += 512) {
-    uint32_t k = n - off < 512 ? n - off : 512;
+    uint32_t len = n - off < 512 ? n - off : 512;
     ota_wr32(b, off), ota_wr32(b + 4, n);
-    memcpy(b + 8, p + off, k);
+    memcpy(b + 8, p + off, len);
     for (int again = 0; again < 2; again++) {
-      if (share_ask(0x52, b, 8 + k, r) != 5 || ota_rd32(r) != off || r[4] != SHARE_OK) {
+      if (share_ask(0x52, k, b, 8 + len, r) != 5 || ota_rd32(r) != off) {
         return -1;
+      }
+      if (r[4] != SHARE_OK) {
+        return r[4];
       }
     }
   }
   ota_wr32(b, n), ota_wr16(b + 4, ota_crc16(p, n, 0) + crc_off);
-  return share_ask(0x53, b, 6, r) == 1 ? r[0] : -1;
+  return share_ask(0x53, k, b, 6, r) == 1 ? r[0] : -1;
+}
+
+/* block k read from the FM-1 into out; its size, or -1 */
+static int share_read(int k, uint8_t *out) {
+  uint8_t r[600], q[6];
+  if (share_ask(0x50, k, 0, 0, r) != 36) {
+    return -1;
+  }
+  uint32_t size = ota_rd32(r + 1);
+  for (uint32_t off = 0; off < size; off += 512) {
+    uint32_t want = size - off < 512 ? size - off : 512;
+    ota_wr32(q, off), ota_wr16(q + 4, 512);
+    if (share_ask(0x51, k, q, 6, r) != (int)(6 + want) || ota_rd32(r) != off || ota_rd16(r + 4) != want) {
+      return -1;
+    }
+    memcpy(out + off, r + 6, want);
+  }
+  return (int)size;
+}
+
+/* a bank as the helpers make them: MINE (KICK, HAT: one a key) and DRUMS (a drum kit: BD, CH) */
+static uint32_t make_bank(uint8_t *b) {
+  uint32_t n = 8 + 2 * 12 + 4 * 20, lens[4] = {4000, 2000, 3000, 1000};
+  static const char *const NAME[4] = {"KICK", "HAT", "", ""};
+  memset(b, 0, n);
+  memcpy(b, "FJB1", 4);
+  b[4] = 2, b[5] = 4;
+  memcpy(b + 8, "MINE", 4), b[16] = 0, b[17] = 2, b[18] = 0;
+  memcpy(b + 20, "DRUMS", 5), b[28] = 2, b[29] = 2, b[30] = 1;
+  for (int i = 0; i < 4; i++) {
+    uint8_t *e = b + 32 + 20 * i;
+    memcpy(e, NAME[i], strlen(NAME[i]));
+    ota_wr32(e + 8, n), ota_wr32(e + 12, lens[i]);
+    ota_wr16(e + 16, 22050);
+    e[18] = 40;
+    e[19] = i == 2 ? V_BD : i == 3 ? V_CH : 0;
+    for (uint32_t k = 0; k < lens[i] / 2; k++) {
+      b[n + k] = (uint8_t)(i & 1 ? random32() : (k & 8 ? 0x77 : 0xFF)); /* (codes up and down: a loud wave) */
+    }
+    n += lens[i] / 2;
+  }
+  return n;
+}
+
+/* the peak of voice v on machine m over 2048 frames */
+static int32_t peak_of(int m, int v) {
+  static int32_t o[2048];
+  song.track[0].machine = (uint8_t)m, song.track[0].level = 100;
+  song.track[0].tune = song.track[0].decay = song.track[0].tone = 64;
+  memset(o, 0, sizeof o);
+  drums_hit(0, v, 127);
+  for (int i = 0; i < 2048; i += 256) {
+    drums_render(0, o + i, 256);
+  }
+  int32_t peak = 0;
+  for (int i = 0; i < 2048; i++) {
+    peak = abs(o[i]) > peak ? abs(o[i]) : peak;
+  }
+  return peak;
 }
 
 static int share_test(void) {
   extern void setup(void);
-  static uint8_t kept[sizeof(song_t)], r[600];
-  int bad = 0;
+  static uint8_t kept[sizeof(song_t)], r[600], bank[8192], back[8192];
+  int bad = 0, k1 = machine_find("KIT1", -1);
 #define CHECK(c, what) (c ? printf("ok   %s\n", what) : (printf("FAIL %s\n", what), bad = 1))
   setup();
-  int k = share_ask(0x50, 0, 0, r);
-  CHECK(k == 31 && r[0] == 1 && ota_rd32(r + 1) == sizeof song && !strcmp((char *)r + 7, "FOMAJAM"), "INFO: FOMAJAM, a song's size");
-  for (uint32_t off = 0, ok = 1; off < sizeof song || (CHECK(ok, "READ: the song, in pieces"), 0); off += 512) {
-    uint8_t q[6];
-    ota_wr32(q, off), ota_wr16(q + 4, 512);
-    k = share_ask(0x51, q, 6, r);
-    uint32_t want = sizeof song - off < 512 ? sizeof song - off : 512;
-    ok &= k == (int)(6 + want) && ota_rd32(r) == off && ota_rd16(r + 4) == want;
-    memcpy(kept + off, r + 6, want);
-  }
-  CHECK(!memcmp(kept, &song, sizeof song), "READ: what came is the song");
+  int k = share_ask(0x50, 0, 0, 0, r);
+  CHECK(k == 36 && r[0] == 1 && ota_rd32(r + 1) == sizeof song && !strcmp((char *)r + 7, "FOMAJAM") && r[31] == 0,
+        "INFO: FOMAJAM, a song's size");
+  CHECK(share_read(0, kept) == sizeof song && !memcmp(kept, &song, sizeof song), "READ: the song, in pieces");
 
   song_t s;
   memcpy(&s, kept, sizeof s);
   s.bpm = 97, s.pat[39].flag[8][15] = STEP_ON;
-  CHECK(share_write((uint8_t *)&s, sizeof s, 0) == SHARE_OK && song.bpm == 97 && song.pat[39].flag[8][15] == STEP_ON,
+  CHECK(share_write(0, (uint8_t *)&s, sizeof s, 0) == SHARE_OK && song.bpm == 97 && song.pat[39].flag[8][15] == STEP_ON,
         "WRITE: a changed song loads");
-  CHECK(share_write(kept, sizeof song, 1) == SHARE_INCOMPLETE && song.bpm == 97, "WRITE: a wrong crc is refused");
+  CHECK(share_write(0, kept, sizeof song, 1) == SHARE_INCOMPLETE && song.bpm == 97, "WRITE: a wrong crc is refused");
   uint8_t q[8 + 512];
   ota_wr32(q, 1024), ota_wr32(q + 4, sizeof song);
-  CHECK(share_ask(0x52, q, 8 + 512, r) == 5 && r[4] == SHARE_INCOMPLETE, "WRITE: a gap is refused");
+  CHECK(share_ask(0x52, 0, q, 8 + 512, r) == 5 && r[4] == SHARE_INCOMPLETE, "WRITE: a gap is refused");
   kept[0] = 3;
-  CHECK(share_write(kept, sizeof song, 0) == SHARE_BAD, "WRITE: a song version it doesn't know is refused");
+  CHECK(share_write(0, kept, sizeof song, 0) == SHARE_BAD, "WRITE: a song version it doesn't know is refused");
   kept[0] = SONG_VERSION;
   memcpy(&s, kept, sizeof s);
   s.version = 8, s.bpm = 133;
-  CHECK(share_write((uint8_t *)&s, SONG8_SIZE, 0) == SHARE_OK && song.bpm == 133 && song.version == SONG_VERSION && song.rxch[0] == 1,
+  CHECK(share_write(0, (uint8_t *)&s, SONG8_SIZE, 0) == SHARE_OK && song.bpm == 133 && song.version == SONG_VERSION &&
+            song.rxch[0] == 1,
         "WRITE: a version 8 song loads (with the MIDI in defaults)");
   playing = 1;
-  CHECK(share_write(kept, sizeof song, 0) == SHARE_BUSY && song.bpm == 133, "WRITE: not while playing");
+  CHECK(share_write(0, kept, sizeof song, 0) == SHARE_BUSY && song.bpm == 133, "WRITE: not while playing");
   playing = 0;
-  CHECK(share_write(kept, sizeof song, 0) == SHARE_OK && !memcmp(kept, &song, sizeof song), "WRITE: the first one back");
+  CHECK(share_write(0, kept, sizeof song, 0) == SHARE_OK && !memcmp(kept, &song, sizeof song), "WRITE: the first one back");
+
+  /* the store: the kits */
+  k = share_ask(0x50, 1, 0, 0, r);
+  CHECK(k == 36 && ota_rd32(r + 1) == 0 && r[31] == 1 && ota_rd32(r + 32) == STORE_MAX, "STORE: empty, 288 KiB");
+  CHECK(k1 >= 0 && machine_empty(k1) && machine_count() == k1 + USER_KITS, "STORE: its four kit slots are empty");
+  uint32_t n = make_bank(bank);
+  CHECK(share_write(1, bank, n, 0) == SHARE_OK, "STORE: a bank written");
+  CHECK(!strcmp(machine_name(k1), "MINE") && !strcmp(machine_label(k1), "MIN") && !machine_kit(k1) && machine_voices(k1) == 2 &&
+            !strcmp(voice_name(k1, 0), "KICK") && !strcmp(voice_name(k1, 1), "HAT"),
+        "STORE: MINE plays KICK and HAT, one a key");
+  CHECK(!strcmp(machine_name(k1 + 1), "DRUMS") && machine_kit(k1 + 1) && machine_voices(k1 + 1) == V_COUNT &&
+            machine_has(k1 + 1, V_BD) == 1 && machine_has(k1 + 1, V_CH) == 1 && machine_has(k1 + 1, V_SD) == 0 &&
+            machine_has(k1 + 1, V_BD2) == 2 && machine_empty(k1 + 2),
+        "STORE: DRUMS is a drum kit (BD2 played by BD), then two empty slots");
+  CHECK(share_read(1, back) == (int)n && !memcmp(back, bank, n), "STORE: read back as it was written");
+  CHECK(peak_of(k1, 0) > 1000 && peak_of(k1 + 1, V_BD) > 1000, "STORE: they sound");
+  playing = 1;
+  CHECK(share_write(1, bank, n, 0) == SHARE_BUSY && !machine_empty(k1), "STORE: not while playing (and kept)");
+  playing = 0;
+  CHECK(share_write(1, bank, n, 1) == SHARE_INCOMPLETE && machine_empty(k1), "STORE: a wrong crc leaves none");
+  bank[4] = 9;
+  bank[n - 1] ^= 1;
+  CHECK(share_write(1, bank, n, 0) == SHARE_OK && machine_empty(k1), "STORE: a bank it can't read is no kits");
+  bank[4] = 2;
+  CHECK(share_write(1, bank, n, 0) == SHARE_OK && !machine_empty(k1 + 1), "STORE: and back");
+  store_known = 0;
+  drums_store();
+  CHECK(!strcmp(machine_name(k1 + 1), "DRUMS"), "STORE: still there after a restart");
   return bad;
 }
 
@@ -399,6 +500,27 @@ int main(int argc, char **argv) {
   }
   if (!strcmp(mode, "--share")) {
     return share_test();
+  }
+  if (!strcmp(mode, "--bank") && argc > 2) { /* a bank file (as the helpers make it) in the store: USER's voices */
+    FILE *f = fopen(argv[2], "rb");
+    uint32_t n = f ? (uint32_t)fread(flash, 1, STORE_MAX, f) : 0;
+    uint8_t r[16];
+    if (f) {
+      fclose(f);
+    }
+    ota_wr32(r, STORE_MAGIC), ota_wr32(r + 4, n), ota_wr32(r + 8, ota_crc16(flash, n, 0)), ota_wr32(r + 12, ~STORE_MAGIC);
+    memcpy(flash + STORE_MAX, r, 16);
+    drums_store();
+    for (int m = machine_find("KIT1", machine_count() - USER_KITS); m < machine_count() && !machine_empty(m); m++) {
+      printf("%s (%s):", machine_name(m), machine_kit(m) ? "a drum kit" : "one a key");
+      for (int v = 0; v < machine_voices(m); v++) {
+        if (machine_has(m, v) == 1) {
+          printf(" %s peak %d", voice_name(m, v), peak_of(m, v));
+        }
+      }
+      printf("\n");
+    }
+    return 0;
   }
   fprintf(stderr, "render --check | --calibrate | --wav DIR | --song FILE\n");
   return 2;

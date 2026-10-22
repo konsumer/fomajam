@@ -4,6 +4,18 @@
  *   ROM       recordings of the machines' own samples (tools/roms.py), stored as 4-bit IMA ADPCM
  *   SMP       the .wav files in samples/ (tools/samples.py), one voice per file
  *   ANALOG .. after these come the synth engines (synths.c); they are not drum machines, and their voices are notes
+ *   MIDI      sends its notes out
+ *   kits      the store's (fm1.h): up to USER_KITS named machines a helper (fm1buddy, the page's Songs tab) made from
+ *             .wav files. A drum kit has the 22 voices (bd.wav, sd.wav, ...: the others as the ROM machines stand in
+ *             for them); else one voice a key, as SMP. They come last, so the machines before them keep their
+ *             numbers in saved songs; an empty slot is skipped by the MACHINE knob.
+ *
+ * The store holds a bank, as the helpers write it (little-endian):
+ *   "FJB1", kits (1 byte, up to USER_KITS), entries (1 byte, up to USER_KITS * USER_MAX), 0
+ *   kits x 12 bytes: name (8, A-Z 0-9, 0 after), first entry, entries (up to USER_MAX), 1 if a drum kit, 0
+ *   entries x 20 bytes: name (8, A-Z 0-9, 0 after), offset u32 (from the bank's start), len u32 (samples),
+ *     rate u16 (Hz), idx0 (the IMA step index it starts at), its voice in a drum kit (V_BD ..)
+ *   the samples: IMA ADPCM, 4 bits each, the first in the low nibble (as the ROM machines; tools/roms.py adpcm())
  *
  * A track can play two voices at once, so a hi-hat over a ringing kick doesn't cut it off. A closed hi-hat
  * does cut off an open one on the same track. This code runs in audio(): integers only. */
@@ -29,17 +41,113 @@ static int clamp(int v, int lo, int hi) {
 }
 
 /* ---- the machines */
-#define M_MIDI (M_SYNTH + synth_count()) /* the last: MIDI out */
+#define M_MIDI (M_SYNTH + synth_count()) /* MIDI out; the store's kits after it */
 
-int machine_count(void) { return M_MIDI + 1; }
+/* ---- the kits in the store, checked (drums_store): USER_KITS slots after MIDI, the empty ones skipped by the knob */
+#define USER_ENTRIES (USER_KITS * USER_MAX)
+typedef struct {
+  char name[9], label[4];
+  uint8_t first, count, kit; /* its entries; kit: a drum kit (map), else one a key */
+  int8_t map[V_COUNT];       /* a kit: each voice's entry (-1: none) */
+} ukit_t;
+static rom_t user[USER_ENTRIES];
+static char user_name[USER_ENTRIES][7];
+static ukit_t ukit[USER_KITS];
+static volatile int ukits; /* how many are there */
+static const uint8_t *ustore; /* the bank they're in, and its size */
+static uint32_t ustore_n;
+
+static uint32_t rd32(const uint8_t *p) { return p[0] | p[1] << 8 | p[2] << 16 | (uint32_t)p[3] << 24; }
+
+/* name: up to max of A-Z 0-9 from p */
+static void uname(char *o, const uint8_t *p, int max) {
+  int k = 0;
+  for (; k < max && ((p[k] >= '0' && p[k] <= '9') || (p[k] >= 'A' && p[k] <= 'Z')); k++) {
+    o[k] = (char)p[k];
+  }
+  o[k] = 0;
+}
+
+/* the bank, or 0 kits if it isn't one the helpers write */
+static int store_kits(const uint8_t *b, uint32_t n) {
+  if (!b || n < 8 || b[0] != 'F' || b[1] != 'J' || b[2] != 'B' || b[3] != '1' || b[4] > USER_KITS || b[5] > USER_ENTRIES) {
+    return 0;
+  }
+  int kits = b[4], entries = b[5];
+  const uint8_t *e = b + 8 + 12 * kits;
+  if (n < 8u + 12u * kits + 20u * entries) {
+    return 0;
+  }
+  for (int i = 0; i < entries; i++, e += 20) {
+    uint32_t off = rd32(e + 8), len = rd32(e + 12), rate = e[16] | e[17] << 8;
+    if (off > n || len / 2 > n - off || rate < 4000 || rate > 48000 || e[18] > 88) {
+      return 0;
+    }
+    user[i] = (rom_t){b + off, len, rate * 65536u / SAMPLE_RATE, e[18]};
+    uname(user_name[i], e, 6);
+  }
+  for (int k = 0; k < kits; k++) {
+    const uint8_t *h = b + 8 + 12 * k;
+    ukit_t *u = &ukit[k];
+    if (h[8] + h[9] > entries || h[9] > USER_MAX || !h[9]) {
+      return 0;
+    }
+    uname(u->name, h, 8);
+    uname(u->label, h, 3);
+    if (!u->name[0]) {
+      return 0;
+    }
+    u->first = h[8], u->count = h[9], u->kit = h[10] == 1;
+    for (int v = 0; v < V_COUNT; v++) {
+      u->map[v] = -1;
+    }
+    for (int i = 0; u->kit && i < u->count; i++) {
+      int v = b[8 + 12 * kits + 20 * (u->first + i) + 19];
+      if (v >= V_COUNT) {
+        return 0;
+      }
+      u->map[v] = (int8_t)(u->first + i);
+    }
+  }
+  return kits;
+}
+
+void drums_store(void) {
+  uint32_t n;
+  ukits = 0;
+  const uint8_t *b = store_data(&n);
+  ustore = b, ustore_n = b ? n : 0;
+  ukits = store_kits(b, n);
+}
+
+/* store kit m, or 0 (not one, or its slot is empty) */
+static const ukit_t *ukit_of(int m) {
+  int k = m - (M_MIDI + 1);
+  return k >= 0 && k < ukits ? &ukit[k] : 0;
+}
+#define M_USER (M_MIDI + 1)
+#define IS_USER(m) ((m) >= M_USER && (m) < M_USER + USER_KITS)
+
+int machine_kit(int m) {
+  const ukit_t *u = ukit_of(m);
+  return m < M_SMP || (u && u->kit);
+}
+
+int machine_empty(int m) { return IS_USER(m) && !ukit_of(m); }
+
+int machine_count(void) { return M_USER + USER_KITS; }
 
 int machine_midi(int m) { return m == M_MIDI; }
 
-int machine_synth(int m) { return m >= M_SYNTH; }
+int machine_synth(int m) { return m >= M_SYNTH && m <= M_MIDI; }
 
 int machine_engine(int m) { return m >= M_SYNTH && m < M_MIDI ? m - M_SYNTH : -1; }
 
 const char *machine_name(int m) {
+  if (IS_USER(m)) {
+    static const char *const EMPTY[USER_KITS] = {"KIT1", "KIT2", "KIT3", "KIT4"};
+    return ukit_of(m) ? ukit_of(m)->name : EMPTY[m - M_USER];
+  }
   return m < M_ROM ? MODEL_NAME[m] : m < M_SMP ? ROM_NAME[m - M_ROM]
                                  : IS_SMP(m)   ? "SMP"
                                  : m == M_MIDI ? "MIDI"
@@ -47,6 +155,10 @@ const char *machine_name(int m) {
 }
 
 const char *machine_label(int m) {
+  if (IS_USER(m)) {
+    static const char *const EMPTY[USER_KITS] = {"K1", "K2", "K3", "K4"};
+    return ukit_of(m) ? ukit_of(m)->label : EMPTY[m - M_USER];
+  }
   return m < M_ROM ? MODEL_LABEL[m] : m < M_SMP ? ROM_LABEL[m - M_ROM]
                                   : IS_SMP(m)   ? "SMP"
                                   : m == M_MIDI ? "MID"
@@ -69,12 +181,32 @@ int machine_find(const char *name, int otherwise) {
   return otherwise;
 }
 
-int machine_voices(int m) { return IS_SMP(m) ? SAMPLE_COUNT : m >= M_SYNTH ? 128
-                                                                           : V_COUNT; }
+int machine_voices(int m) {
+  if (IS_USER(m)) {
+    const ukit_t *u = ukit_of(m);
+    return !u ? 1 : u->kit ? V_COUNT
+                           : u->count;
+  }
+  return IS_SMP(m) ? SAMPLE_COUNT : m >= M_SYNTH ? 128
+                                                 : V_COUNT;
+}
+
+/* a recording's voice: its ADPCM (ROM, the store's kits), or 0 (SMP: 16-bit) */
+static const rom_t *rom_of(int m, int r) {
+  const ukit_t *u = ukit_of(m);
+  if (u) {
+    return &user[u->kit ? u->map[r] : u->first + r];
+  }
+  return m >= M_ROM && m < M_SMP ? &ROM[m - M_ROM][r] : 0;
+}
 
 static int own(int m, int v) {
   if (v < 0 || v >= machine_voices(m)) {
     return 0;
+  }
+  if (IS_USER(m)) {
+    const ukit_t *u = ukit_of(m);
+    return u && (u->kit ? u->map[v] >= 0 : v < u->count);
   }
   return m < M_ROM ? PATCH[m][v].kind != K_NONE : m < M_SMP ? ROM[m - M_ROM][v].len > 0
                                                             : 1; /* SMP, the synths */
@@ -86,7 +218,7 @@ static int resolve(int m, int v, int *semis) {
   if (own(m, v)) {
     return v;
   }
-  if (m >= M_SMP || v < 0 || v >= V_COUNT) {
+  if (!machine_kit(m) || v < 0 || v >= V_COUNT) {
     return -1;
   }
   for (int i = 0; i < 3 && FALLBACK[v][i][0]; i++) {
@@ -109,7 +241,11 @@ const char *voice_name(int m, int v) {
   if (IS_SMP(m)) {
     return SAMPLES[clamp(v, 0, SAMPLE_COUNT - 1)].name;
   }
-  if (m >= M_SYNTH) { /* a note: C#3 */
+  if (IS_USER(m) && !machine_kit(m)) {
+    const ukit_t *u = ukit_of(m);
+    return u && v >= 0 && v < u->count ? user_name[u->first + v] : "NONE";
+  }
+  if (machine_synth(m)) { /* a note: C#3 */
     static const char *const NOTE[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
     static char s[6];
     const char *n = NOTE[clamp(v, 0, 127) % 12];
@@ -204,6 +340,18 @@ typedef struct {
 
 static dv_t dv[TRACKS][POLY];
 
+/* the bank's about to go (the store is rewritten): its voices stop, before they read what's not there */
+void drums_unstore(void) {
+  ukits = 0;
+  for (int t = 0; t < TRACKS; t++) {
+    for (int i = 0; i < POLY; i++) {
+      if (dv[t][i].on && dv[t][i].rom >= ustore && dv[t][i].rom < ustore + ustore_n) {
+        dv[t][i].on = 0;
+      }
+    }
+  }
+}
+
 static const uint16_t METAL_HZ10[6] = {2053, 3044, 3696, 5227, 5400, 8000};
 
 /* TONE moves a frequency index by up to +-range/2 octaves */
@@ -250,7 +398,7 @@ static void voice_start(dv_t *v, const track_t *d, int m, int voice, int semis) 
       v->len = SAMPLES[voice].len;
       v->step = tuned(1u << 15, semis); /* the samples are at half the rate */
     } else {
-      const rom_t *r = &ROM[m - M_ROM][voice];
+      const rom_t *r = rom_of(m, voice);
       v->smp = 0;
       v->rom = r->data;
       v->len = r->len;
@@ -353,7 +501,7 @@ static void voice_start(dv_t *v, const track_t *d, int m, int voice, int semis) 
 static void drum_hit(int t, int v, int vel) {
   const track_t *d = &song.track[t];
   int m = d->machine < machine_count() ? d->machine : 0, semis;
-  int r = m >= M_SYNTH ? -1 : resolve(m, v, &semis);
+  int r = machine_synth(m) ? -1 : resolve(m, v, &semis);
   if (r < 0) {
     return;
   }
@@ -556,7 +704,7 @@ void drums_hit(int t, int v, int vel) { drum_hit(t, v, vel); }
 void drum_envelope(int t, int v, uint8_t *h, int n) {
   const track_t *d = &song.track[t];
   int m = d->machine < machine_count() ? d->machine : 0, semis;
-  int r = m >= M_SYNTH ? -1 : resolve(m, v, &semis);
+  int r = machine_synth(m) ? -1 : resolve(m, v, &semis);
   for (int i = 0; i < n; i++) {
     h[i] = 0;
   }
@@ -564,15 +712,16 @@ void drum_envelope(int t, int v, uint8_t *h, int n) {
     return;
   }
   if (m >= M_ROM) { /* the recording's own peaks */
-    uint32_t len = IS_SMP(m) ? SAMPLES[r].len : ROM[m - M_ROM][r].len;
-    uint32_t rate = IS_SMP(m) ? 22050 : (ROM[m - M_ROM][r].step * 44100u) >> 16;
-    int32_t pred = 0, idx = IS_SMP(m) ? 0 : ROM[m - M_ROM][r].idx0;
+    const rom_t *rr = rom_of(m, r);
+    uint32_t len = IS_SMP(m) ? SAMPLES[r].len : rr->len;
+    uint32_t rate = IS_SMP(m) ? 22050 : (rr->step * 44100u) >> 16;
+    int32_t pred = 0, idx = IS_SMP(m) ? 0 : rr->idx0;
     for (uint32_t k = 0; k < len; k++) {
       int col = (int)(k * 1000u / rate * (uint32_t)n / 1000u), a;
       if (col >= n) {
         break;
       }
-      a = IS_SMP(m) ? SAMPLES[r].data[k] : ima_next(ROM[m - M_ROM][r].data, k, &pred, &idx);
+      a = IS_SMP(m) ? SAMPLES[r].data[k] : ima_next(rr->data, k, &pred, &idx);
       a = (a < 0 ? -a : a) >> 7;
       if (a > h[col]) {
         h[col] = (uint8_t)(a > 255 ? 255 : a);

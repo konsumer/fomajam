@@ -79,12 +79,22 @@ static volatile uint32_t fm1_ms; /* milliseconds since power-on (TIMER5) */
 #define SETTINGS_AT 0x000FC000u
 #define SETTINGS_END 0x000FF000u
 #endif
-#define FL_RANGE_OK(off, n) (FL_IN(off, n, FL_OTA_LO, FL_OTA_HI) || FL_IN(off, n, SETTINGS_AT, SETTINGS_END))
+/* the store (fm1.h, share.c): FM-1 in Felucca's store, SMK-37 after the settings; the record's sector after it */
+#if FOMA_SMK37
+#define STORE_AT 0x000A0000u
+#else
+#define STORE_AT 0x00097000u
+#endif
+#define STORE_END (STORE_AT + STORE_MAX + 0x1000u)
+#define FL_RANGE_OK(off, n) \
+  (FL_IN(off, n, FL_OTA_LO, FL_OTA_HI) || FL_IN(off, n, SETTINGS_AT, SETTINGS_END) || FL_IN(off, n, STORE_AT, STORE_END))
 #include "fm1_flash.h"
 #if FOMA_SMK37
 _Static_assert(SETTINGS_AT >= FL_DATA_LO && SETTINGS_END <= FL_DATA_HI, "SMK: the settings must be in FL_DATA");
 #endif
 static uint8_t flash_ok;
+_Static_assert(STORE_AT >= FL_PLAIN_LO && (STORE_END <= SETTINGS_AT || STORE_AT >= SETTINGS_END) && STORE_END <= FL_OTA_LO,
+               "the store: in the plain window, clear of the settings, before the update's staging");
 static int st_read(uint32_t off, void *dst, uint32_t n) {
   uint8_t *d = dst;
   while (n) {
@@ -110,6 +120,12 @@ static uint8_t recovery_active;
 static void share_frame(uint32_t cmd, const uint8_t *b, uint32_t n);
 #define OTA_MORE share_frame
 #include "ota.c"
+static const uint8_t *store_mem(void) { return (const uint8_t *)FL_XIP(STORE_AT); } /* (the plain window) */
+static int store_erase(uint32_t off) {
+  uint32_t took;
+  return flash_ok ? fl_erase4k(STORE_AT + off, &took) : -1;
+}
+static int store_prog(uint32_t off, const uint8_t *p, uint32_t n) { return flash_ok ? fl_write(STORE_AT + off, p, n) : -1; }
 #include "share.c"
 static void recovery_poll(void);
 static uint32_t ota_now_ms(void) { return fm1_ms; }
@@ -607,6 +623,9 @@ void fm1_cstart(void) {
 #else
   flash_ok = FL_FAR(fl_jedec_ram)() == 0x856014u;
 #endif
+  if (flash_ok) {
+    fl_plain_window_init(); /* the store reads as it is (as Felucca's samples): it's not the code's encrypted flash */
+  }
   ota_boot_cleanup();
   lcd_init();
   lcd_fill(0, 0, 240, 240, C_BLACK);

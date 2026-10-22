@@ -23,9 +23,16 @@ class FM1 extends AudioWorkletProcessor {
           new Uint8Array(this.mem.buffer, ex.web_store(), m.store.length).set(m.store)
           ex.web_store_set_len(m.store.length)
         }
+        if (m.flash) {
+          // the store (samples): its data at the start, its record after STORE_MAX
+          const f = new Uint8Array(this.mem.buffer, ex.web_flash(), ex.web_flash_len())
+          f.set(m.flash.data.subarray(0, f.length - 4096))
+          f.set(m.flash.record, f.length - 4096)
+        }
         ex.web_master(m.master)
         this.sentFb = -1
         this.sentStore = ex.web_store_gen()
+        this.sentFlash = ex.web_flash_gen()
         this.last = 0
         this.midi = []
         ex.web_boot()
@@ -68,6 +75,14 @@ class FM1 extends AudioWorkletProcessor {
     if (sg !== this.sentStore) {
       this.sentStore = sg
       msg.store = new Uint8Array(this.mem.buffer, ex.web_store(), ex.web_store_len()).slice()
+    }
+    const fg = ex.web_flash_gen()
+    if (fg !== this.sentFlash) {
+      this.sentFlash = fg
+      const f = new Uint8Array(this.mem.buffer, ex.web_flash(), ex.web_flash_len())
+      const record = f.slice(f.length - 4096, f.length - 4096 + 16)
+      const n = record[4] | (record[5] << 8) | (record[6] << 16) | (record[7] << 24)
+      msg.flash = { data: f.slice(0, Math.min(n, f.length - 4096)), record }
     }
     const p = ex.web_log()
     const bytes = new Uint8Array(this.mem.buffer, p)
