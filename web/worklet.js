@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The FM-1 in an AudioWorklet: firmware.wasm is your code on platform/web.c. Each render quantum
 // asks it for 128 frames, which runs the device's clock forward (loop() once per millisecond);
-// about 30 times a second the screen, the LEDs, MIDI out, print() and the settings go to the page.
+// about 30 times a second the screen, the LEDs, MIDI out, print() and the settings go to the page. SysEx goes both ways
+// as with the FM-1 on USB (fm1share.js): in one message at a time, its answers out as soon as they're there.
 
 class FM1 extends AudioWorkletProcessor {
   constructor() {
@@ -42,6 +43,10 @@ class FM1 extends AudioWorkletProcessor {
     else if (m.type === 'encoder') ex.web_encoder(m.id, m.n | 0)
     else if (m.type === 'master') ex.web_master(m.value | 0)
     else if (m.type === 'midi') ex.web_midi_in(m.data[0], m.data[1] || 0, m.data[2] || 0)
+    else if (m.type === 'sysex' && m.data.length <= 640) {
+      new Uint8Array(this.mem.buffer, ex.web_sysex_buf(), m.data.length).set(m.data)
+      ex.web_sysex_in(m.data.length) // (busy: dropped, and asked again)
+    }
   }
 
   crash(err) {
@@ -84,6 +89,11 @@ class FM1 extends AudioWorkletProcessor {
     try {
       ex.web_render(n)
       for (let m; (m = ex.web_midi_out()) >= 0;) this.midi.push(m)
+      const k = ex.web_sysex_out_len()
+      if (k) {
+        this.port.postMessage({ type: 'sysex', data: new Uint8Array(this.mem.buffer, ex.web_sysex_out(), k).slice() })
+        ex.web_sysex_out_clear()
+      }
     } catch (err) {
       this.crash(err)
       return true

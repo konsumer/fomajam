@@ -200,13 +200,19 @@ converts them to 16-bit mono at 22050 Hz, up to 2 seconds each, and they become 
 named after it (`01-boom.wav` becomes `BOOM`). Samples share flash with the ROM machines, so you may need to remove a
 ROM machine to make room.
 
-## Songs on an SD card
+## Songs
 
-[fm1buddy](https://github.com/konsumer/fm1buddy) keeps songs on its SD card: save the one on the FM-1 there, and load
-one back before you play it. The song is everything `SAVE` keeps (the patterns, the tracks' sounds, the effects and the
-settings). Loading one replaces the song on the FM-1 and saves it; it waits until the FM-1 is stopped.
+Keep a setup for each song you play, and load it before you play it. The song is everything `SAVE` keeps (the
+patterns, the tracks' sounds, the effects and the settings). Loading one replaces the song on the FM-1 and saves it; it
+waits until the FM-1 is stopped.
 
-How they talk is in [platform/src/share.c](platform/src/share.c), so another helper can do the same.
+- On a computer: the **Songs** tab of [the page](https://konsumer.github.io/fomajam/#songs), with the FM-1 on USB or
+  with the emulator. A setup is a folder with `fomajam.bin` in it: choose a folder to keep them in, such as an SD
+  card's `setups`.
+- Without one: [fm1buddy](https://github.com/konsumer/fm1buddy) keeps them on its SD card, in `/setups`, the same way.
+
+How they talk is in [platform/src/share.c](platform/src/share.c) (and [web/fm1share.js](web/fm1share.js) for the other
+side), so another helper can do the same.
 
 ## Themes
 
@@ -311,16 +317,20 @@ To hear and check the sound without an FM-1 (after a build, which creates `build
 
 ```sh
 cc -O2 -Isrc -Iplatform -Ibuild/gen -Ivendor/felucca-engines/src -Ivendor/felucca -D__wasm__ \
-  -o build/render test/render.c src/{drums,engine,main,synths,fx}.c -lm
+  -o build/render test/render.c src/{drums,engine,fx,main,synths}.c -lm
 build/render --check          # every drum voice sounds, stays in range and dies away
 build/render --wav /tmp/kit   # a .wav for every machine and voice
 build/render --synths         # the same checks for every synth preset
 build/render --song song.wav  # 8 seconds of the starting song (add N for pattern N)
 build/render --midi           # the MIDI messages a MIDI track and the clock send in one bar, with their times
+build/render --share          # the song read and written as fm1buddy does it
 ```
 
 `node test/fm1ota_test.mjs` checks that the installer never writes a package to another model (an FM-1 package to an
 SMK-37, or the other way).
+
+`node test/share_test.mjs` reads and writes the song in the emulator's firmware the way the Songs tab does, losing
+some messages on the way.
 
 The functions the firmware can call are in [platform/fm1.h](platform/fm1.h): it's [foma](https://github.com/konsumer/foma)'s
 platform, with its USB audio, TRS MIDI and MIDI clock options on. The name, version, package identity and those options
