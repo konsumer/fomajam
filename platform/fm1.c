@@ -107,7 +107,10 @@ static uint8_t recovery_active;
 #else
 #define OTA_IDENTITY (recovery_active ? "FM-1_000" : FELUCCA_ID)
 #endif
+static void share_frame(uint32_t cmd, const uint8_t *b, uint32_t n);
+#define OTA_MORE share_frame
 #include "ota.c"
+#include "share.c"
 static void recovery_poll(void);
 static uint32_t ota_now_ms(void) { return fm1_ms; }
 static void ota_idle(void) {

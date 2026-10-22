@@ -177,6 +177,20 @@ const int32_t *audio_in(void);
 int settings_load(void *p, uint32_t n); /* 0: loaded; else p is untouched */
 int settings_save(const void *p, uint32_t n);
 
+/* ---- sharing: a helper on USB (fm1buddy) keeps what the app gives it on its SD card and brings it back later, as one
+ * block of up to SHARE_MAX bytes (the settings, say). The app supplies these two; without them there's nothing to share.
+ * Both are called between passes of loop(). See platform/src/share.c for how they travel
+ *   share_get(&n)    what to keep: the bytes, and how many
+ *   share_put(p, n)  take these back (share_get's, maybe from an older version of the app): SHARE_OK or why not */
+#define SHARE_MAX SETTINGS_MAX
+enum { SHARE_OK,
+       SHARE_BUSY,       /* not now (it's playing) */
+       SHARE_BAD,        /* not something it knows */
+       SHARE_INCOMPLETE, /* (the platform's: not all of it came, or it came wrong) */
+       SHARE_FAILED };   /* taken, but saving it didn't work */
+const void *share_get(uint32_t *n);
+int share_put(const void *p, uint32_t n);
+
 /* ---- helpers for sound without floats */
 int32_t sine(uint32_t phase);          /* a full cycle over 2^32 -> -32767..32767 */
 uint32_t note_inc(int note);           /* phase step per frame of a MIDI note (0..127) at SAMPLE_RATE */

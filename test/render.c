@@ -2,12 +2,13 @@
  *
  *   ./fm1 build    (once, to create build/gen/)
  *   cc -O2 -Isrc -Iplatform -Ibuild/gen -Ivendor/felucca-engines/src -Ivendor/felucca -D__wasm__ \
- *      -o build/render test/render.c src/{drums,engine,main,synths}.c -lm
+ *      -o build/render test/render.c src/{drums,engine,fx,main,synths}.c -lm
  *   build/render --check            every voice of every drum machine sounds, stays in range and dies away
  *   build/render --synths [DIR]     the same checks for every synth preset (and writes a .wav of each to DIR)
  *   build/render --calibrate        rewrites src/gains.h, bringing each modeled voice to its TARGET peak
  *   build/render --wav DIR          writes a .wav of every machine and voice
  *   build/render --song FILE [N]    8 seconds of the song the firmware starts with (pattern N, 1-40)
+ *   build/render --share            the song read and written as fm1buddy does it (platform/src/share.c)
  *   build/render --midi             the MIDI messages a MIDI track and the clock send in one bar, with times
  *
  * The panel and screen are stubbed out here, and sine() and note_inc() use floating point (the FM-1 doesn't). */
@@ -79,6 +80,117 @@ static void wav(const char *path, const int16_t *x, uint32_t n) {
   fwrite(h, 4, 11, f);
   fwrite(x, 2, n, f);
   fclose(f);
+}
+
+/* ---- sharing (platform/src/share.c, through ota.c's frames): a helper's frames in, the replies out */
+#define APP_NAME "FOMAJAM"
+#define APP_VER "0.1"
+#define FELUCCA_ID "FM-1_961"
+static void share_frame(uint32_t cmd, const uint8_t *b, uint32_t n);
+#define OTA_MORE share_frame
+static const uint8_t *sh_in;
+static uint32_t sh_in_n;
+static uint8_t sh_out[1024];
+static uint32_t sh_out_n;
+static int ota_wire_send(const uint8_t *p, uint32_t n) {
+  memcpy(sh_out, p, n);
+  sh_out_n = n;
+  return 0;
+}
+static int ota_frame_get(const uint8_t **p, uint32_t *n) {
+  *p = sh_in, *n = sh_in_n;
+  return sh_in_n > 0;
+}
+static void ota_frame_done(void) { sh_in_n = 0; }
+static uint32_t ota_now_ms(void) { return 0; }
+static void ota_idle(void) {}
+static int ota_erase(uint32_t off) { return -1; }
+static int ota_prog(uint32_t off, const void *p, uint32_t n) { return -1; }
+static int ota_fread(uint32_t off, void *p, uint32_t n) { return -1; }
+static void ota_show(uint32_t step, int32_t code) {}
+static void ota_commit(const uint8_t *parm) {}
+#include "src/ota.c"
+#include "src/share.c"
+
+/* cmd with body b (n bytes) to the FM-1, as the helper frames it; the reply's body into r, its length (-1: none) */
+static int share_ask(uint32_t cmd, const uint8_t *b, uint32_t n, uint8_t *r) {
+  static uint8_t m[1024], w[1200], d[1024];
+  uint32_t s = 0;
+  m[0] = 0, m[1] = 0x59, m[2] = (uint8_t)cmd, m[3] = (uint8_t)n, m[4] = (uint8_t)(n >> 8), m[5] = (uint8_t)(n >> 16);
+  for (uint32_t i = 0; i < n; i++) {
+    s += m[6 + i] = b[i];
+  }
+  m[6 + n] = (uint8_t)~s;
+  sh_in = w, sh_in_n = ota_pack7(m, 7 + n, w);
+  sh_out_n = 0;
+  ota_service();
+  if (sh_out_n < 2 || sh_out[0] != 0xF0 || sh_out[sh_out_n - 1] != 0xF7) {
+    return -1;
+  }
+  uint32_t k = ota_unpack7(sh_out + 1, sh_out_n - 2, d, sizeof d);
+  if (k < 7 || d[2] != cmd || ota_rd24(d + 3) + 7 != k) {
+    return -1;
+  }
+  memcpy(r, d + 6, k - 7);
+  return (int)(k - 7);
+}
+
+/* a block written to the FM-1 in 512-byte pieces (each one twice: a reply lost on the way); DONE's status */
+static int share_write(const uint8_t *p, uint32_t n, int crc_off) {
+  uint8_t b[600], r[600];
+  for (uint32_t off = 0; off < n; off += 512) {
+    uint32_t k = n - off < 512 ? n - off : 512;
+    ota_wr32(b, off), ota_wr32(b + 4, n);
+    memcpy(b + 8, p + off, k);
+    for (int again = 0; again < 2; again++) {
+      if (share_ask(0x52, b, 8 + k, r) != 5 || ota_rd32(r) != off || r[4] != SHARE_OK) {
+        return -1;
+      }
+    }
+  }
+  ota_wr32(b, n), ota_wr16(b + 4, ota_crc16(p, n, 0) + crc_off);
+  return share_ask(0x53, b, 6, r) == 1 ? r[0] : -1;
+}
+
+static int share_test(void) {
+  extern void setup(void);
+  static uint8_t kept[sizeof(song_t)], r[600];
+  int bad = 0;
+#define CHECK(c, what) (c ? printf("ok   %s\n", what) : (printf("FAIL %s\n", what), bad = 1))
+  setup();
+  int k = share_ask(0x50, 0, 0, r);
+  CHECK(k == 31 && r[0] == 1 && ota_rd32(r + 1) == sizeof song && !strcmp((char *)r + 7, "FOMAJAM"), "INFO: FOMAJAM, a song's size");
+  for (uint32_t off = 0, ok = 1; off < sizeof song || (CHECK(ok, "READ: the song, in pieces"), 0); off += 512) {
+    uint8_t q[6];
+    ota_wr32(q, off), ota_wr16(q + 4, 512);
+    k = share_ask(0x51, q, 6, r);
+    uint32_t want = sizeof song - off < 512 ? sizeof song - off : 512;
+    ok &= k == (int)(6 + want) && ota_rd32(r) == off && ota_rd16(r + 4) == want;
+    memcpy(kept + off, r + 6, want);
+  }
+  CHECK(!memcmp(kept, &song, sizeof song), "READ: what came is the song");
+
+  song_t s;
+  memcpy(&s, kept, sizeof s);
+  s.bpm = 97, s.pat[39].flag[8][15] = STEP_ON;
+  CHECK(share_write((uint8_t *)&s, sizeof s, 0) == SHARE_OK && song.bpm == 97 && song.pat[39].flag[8][15] == STEP_ON,
+        "WRITE: a changed song loads");
+  CHECK(share_write(kept, sizeof song, 1) == SHARE_INCOMPLETE && song.bpm == 97, "WRITE: a wrong crc is refused");
+  uint8_t q[8 + 512];
+  ota_wr32(q, 1024), ota_wr32(q + 4, sizeof song);
+  CHECK(share_ask(0x52, q, 8 + 512, r) == 5 && r[4] == SHARE_INCOMPLETE, "WRITE: a gap is refused");
+  kept[0] = 3;
+  CHECK(share_write(kept, sizeof song, 0) == SHARE_BAD, "WRITE: a song version it doesn't know is refused");
+  kept[0] = SONG_VERSION;
+  memcpy(&s, kept, sizeof s);
+  s.version = 8, s.bpm = 133;
+  CHECK(share_write((uint8_t *)&s, SONG8_SIZE, 0) == SHARE_OK && song.bpm == 133 && song.version == SONG_VERSION && song.rxch[0] == 1,
+        "WRITE: a version 8 song loads (with the MIDI in defaults)");
+  playing = 1;
+  CHECK(share_write(kept, sizeof song, 0) == SHARE_BUSY && song.bpm == 133, "WRITE: not while playing");
+  playing = 0;
+  CHECK(share_write(kept, sizeof song, 0) == SHARE_OK && !memcmp(kept, &song, sizeof song), "WRITE: the first one back");
+  return bad;
 }
 
 /* one hit of voice v on machine m, at the default knobs, full level: its peak and how long it rings */
@@ -284,6 +396,9 @@ int main(int argc, char **argv) {
     }
     printf("\n");
     return 0;
+  }
+  if (!strcmp(mode, "--share")) {
+    return share_test();
   }
   fprintf(stderr, "render --check | --calibrate | --wav DIR | --song FILE\n");
   return 2;

@@ -1864,14 +1864,9 @@ static void sanitize(void) {
   }
 }
 
-/* a version 7 or 6 song: its 8 patterns were before the effects (6 had none). 1: loaded */
-static int load_old(void) {
+/* a version 7 or 6 song, as it was in song: its 8 patterns were before the effects (6 had none) */
+static void old_layout(int v) {
   uint8_t *b = (uint8_t *)&song, fx[SONG_FX];
-  int v = !settings_load(&song, SONG7_SIZE) && song.version == 7 ? 7 : !settings_load(&song, SONG6_SIZE) && song.version == 6 ? 6
-                                                                                                                              : 0;
-  if (!v) {
-    return 0;
-  }
   for (uint32_t i = 0; i < SONG_FX; i++) {
     fx[i] = b[SONG6_SIZE + i];
   }
@@ -1889,7 +1884,16 @@ static int load_old(void) {
     song.lights = 0;
   }
   song.version = SONG_VERSION;
-  return 1;
+}
+
+/* a version 7 or 6 song from the settings. 1: loaded */
+static int load_old(void) {
+  int v = !settings_load(&song, SONG7_SIZE) && song.version == 7 ? 7 : !settings_load(&song, SONG6_SIZE) && song.version == 6 ? 6
+                                                                                                                              : 0;
+  if (v) {
+    old_layout(v);
+  }
+  return v != 0;
 }
 
 void setup(void) {
@@ -1912,6 +1916,49 @@ void setup(void) {
   clock_setup();
   engine_tempo();
   draw_all();
+}
+
+/* ---- sharing (fm1.h): fm1buddy keeps songs on its SD card, and brings one back before a gig */
+const void *share_get(uint32_t *n) {
+  *n = sizeof song;
+  return &song;
+}
+
+/* a song of any version this one loads; it's then the song, and saved */
+int share_put(const void *p, uint32_t n) {
+  const uint8_t *b = p;
+  int v = n == sizeof song ? SONG_VERSION : n == SONG8_SIZE ? 8
+                                        : n == SONG7_SIZE   ? 7
+                                        : n == SONG6_SIZE   ? 6
+                                                            : 0;
+  if (playing) {
+    return SHARE_BUSY;
+  }
+  if (!v || b[0] != v) {
+    return SHARE_BAD;
+  }
+  for (uint32_t i = 0; i < n; i++) {
+    ((uint8_t *)&song)[i] = b[i];
+  }
+  if (v < 8) {
+    old_layout(v);
+  }
+  if (v < SONG_VERSION) {
+    song.version = SONG_VERSION;
+    midi_defaults();
+  }
+  sanitize();
+  clock_setup();
+  engine_tempo();
+  draw_all();
+  save_pending = 0;
+  dirty = 0;
+  if (settings_save(&song, sizeof song)) {
+    toast("SAVE FAILED");
+    return SHARE_FAILED;
+  }
+  toast("SONG LOADED");
+  return SHARE_OK;
 }
 
 /* ---- the SMK-37's wheels: pitch bend (+-2 semitones) and vibrato on the track chosen; a MIDI track gets them as pitch

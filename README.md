@@ -200,6 +200,14 @@ converts them to 16-bit mono at 22050 Hz, up to 2 seconds each, and they become 
 named after it (`01-boom.wav` becomes `BOOM`). Samples share flash with the ROM machines, so you may need to remove a
 ROM machine to make room.
 
+## Songs on an SD card
+
+[fm1buddy](https://github.com/konsumer/fm1buddy) keeps songs on its SD card: save the one on the FM-1 there, and load
+one back before you play it. The song is everything `SAVE` keeps (the patterns, the tracks' sounds, the effects and the
+settings). Loading one replaces the song on the FM-1 and saves it; it waits until the FM-1 is stopped.
+
+How they talk is in [platform/src/share.c](platform/src/share.c), so another helper can do the same.
+
 ## Themes
 
 The themes are in [src/themes.h](src/themes.h): one for each FM-1 color (BLACK, GREY, BLUE, GREEN, FOREST, PURPLE,
