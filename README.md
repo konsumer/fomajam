@@ -224,8 +224,10 @@ FM-1 and saves them; it waits until the FM-1 is stopped.
 A setup is a folder: `fomajam.bin` (the song), and its kits as folders of `.wav` files in `kits/`, or as they were
 saved from the FM-1 (`fomajam-kits.bin`).
 
-- On a computer: the **Songs** tab of [the page](https://konsumer.github.io/fomajam/#songs), with the FM-1 on USB or
-  with the emulator. Choose a folder to keep the setups in, such as an SD card's `setups`.
+- On a computer: the **Songs** tab of [the page](https://konsumer.github.io/fomajam/#songs), with the FM-1 on USB.
+  Choose a folder to keep the setups in, such as an SD card's `setups`. (With `?emu` in the address,
+  [`/?emu#songs`](https://konsumer.github.io/fomajam/?emu#songs), it talks to the emulator instead: for trying it
+  without an FM-1, and for tests.)
 - Without one: [fm1buddy](https://github.com/konsumer/fm1buddy) keeps them on its SD card, in `/setups`, the same way.
 
 For other gear, **Export** (on the page, or fm1buddy) writes a setup's patterns as MIDI files in `midi/` (one for each

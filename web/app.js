@@ -679,7 +679,13 @@ let setupsDir = null
 let songBytes = null // the file chosen
 let songBusy = false
 
-const songTarget = () => document.querySelector('input[name=songdev]:checked').value
+// the FM-1; the emulator instead with ?emu in the address (for trying it without one, and for tests)
+const songEmu = new URLSearchParams(location.search).has('emu')
+const songTarget = () => (songEmu ? 'emu' : 'fm1')
+if (songEmu) {
+  $('songdevname').textContent = 'The emulator'
+  $('songdevname').nextElementSibling.textContent = 'Switch it on in the Emulator tab. (Without ?emu in the address, this tab talks to the FM-1.)'
+}
 function songStatus(text, pct) {
   $('songprogress').hidden = false
   $('songstatus').textContent = text

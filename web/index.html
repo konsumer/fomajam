@@ -64,11 +64,10 @@
       <!-- ---------------------------------------------------------------- songs -->
       <section id="tab-songs" class="tab" hidden>
         <h1>Songs</h1>
-        <p>Keep a setup for each song you play, and load it before you play it: the song (the patterns, the sounds, the effects and the settings, everything <strong>SAVE</strong> keeps) and up to four kits of your own samples. The FM-1 or the emulator, the same way <a href="https://github.com/konsumer/fm1buddy" target="_blank" rel="noopener">fm1buddy</a> does it without a computer.</p>
+        <p>Keep a setup for each song you play, and load it before you play it: the song (the patterns, the sounds, the effects and the settings, everything <strong>SAVE</strong> keeps) and up to four kits of your own samples. The same way <a href="https://github.com/konsumer/fm1buddy" target="_blank" rel="noopener">fm1buddy</a> does it without a computer.</p>
         <div class="card">
-          <h2>Which one</h2>
-          <label><input type="radio" name="songdev" value="fm1" checked /> The FM-1 (USB, in Chrome or Edge)</label>
-          <label><input type="radio" name="songdev" value="emu" /> The emulator</label>
+          <h2 id="songdevname">The FM-1</h2>
+          <p class="dim">Connect it to this computer with a USB data cable, and use Chrome or Edge.</p>
           <p><button id="songcheck">Check</button></p>
           <p id="songdevinfo" class="dim"></p>
         </div>
