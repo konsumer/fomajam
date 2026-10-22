@@ -893,7 +893,7 @@ async function exportSetup(r) {
 
 if (!window.showDirectoryPicker) {
   $('songfolder').hidden = $('kitsfolder').hidden = true
-  $('songsaveinfo').textContent = 'To files (this browser cannot open folders: Chrome or Edge can).'
+  $('songsaveinfo').textContent = 'Save keeps its song and kits as files (this browser cannot open folders: Chrome or Edge can).'
 }
 $('songfolder').addEventListener('click', async () => {
   try {

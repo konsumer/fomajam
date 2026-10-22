@@ -73,14 +73,10 @@
           <p id="songdevinfo" class="dim"></p>
         </div>
         <div class="card">
-          <h2>Its song and kits</h2>
-          <button id="songsave" class="primary">Save them</button>
-          <p id="songsaveinfo" class="dim">Into a new setup in the folder below, or to files when no folder is chosen.</p>
-        </div>
-        <div class="card">
           <h2>Setups</h2>
           <p class="dim">A setup is a folder: <code>fomajam.bin</code> (the song), and its kits, as <code>.wav</code> files in <code>kits/</code> or as they were saved (<code>fomajam-kits.bin</code>). fm1buddy keeps them on its SD card the same way (<code>/setups</code>): choose that folder on the card, or any folder. <strong>Export</strong> writes a setup's patterns as MIDI files (<code>midi/</code>, for a DAW or another sequencer) and its kits as <code>.wav</code> files (<code>kits/</code>, for other samplers, or to change them).</p>
-          <button id="songfolder">Choose a folder</button>
+          <p><button id="songfolder">Choose a folder</button> <button id="songsave" class="primary">Save</button></p>
+          <p id="songsaveinfo" class="dim">Save keeps its song and kits as a new setup in the folder (or as files, when no folder is chosen).</p>
           <ul id="setuplist" class="setups"></ul>
           <p>Or a song's file: <input type="file" id="songfile" accept=".bin" /> <span id="songloadslot"></span></p>
         </div>
