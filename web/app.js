@@ -40,7 +40,8 @@ async function pollBuild() {
   $('buildlog').hidden = b.ok || !DEV
   $('buildlog-title').textContent = b.wasm ? 'The emulator runs, but the FM-1 build failed' : 'Build failed'
   $('buildlog-text').textContent = b.log
-  $('pkginfo').textContent = b.fwsc ? `${b.name} ${b.version}, identity ${b.identity}` : 'The FM-1 package did not build (see the build log).'
+  const models = Object.keys(b.packages || {})
+  $('pkginfo').textContent = b.fwsc ? `${b.name} ${b.version}, identity ${b.identity}${models.length > 1 ? `. For: ${models.join(', ')} (it picks the one for the connected device)` : ''}` : 'The FM-1 package did not build (see the build log).'
   $('install').disabled = !b.fwsc || busy
   storeKey = `fm1-settings-${b.name}`
   if (b.wasm && !first) reload()
@@ -442,7 +443,7 @@ const TEXT = {
   denied: 'MIDI (SysEx) was not allowed. Allow MIDI in the site settings (address bar) and try again.',
   nomidi: 'This browser cannot talk to the FM-1. Use Chrome or Edge.',
   notfound: 'FM-1 not found. Check the USB cable (a data cable), close other apps that use MIDI, and try again.',
-  model: 'The connected device is not an FM-1.',
+  model: 'The package is for another device: ',
   lost: 'The USB connection was lost. Replug it and try again (an install resumes where it stopped).',
   noloader: 'The FM-1 in update mode was not found. Replug the USB cable and press the button again.',
   noreturn: 'The FM-1 did not come back. Switch it off and on.',
@@ -480,9 +481,12 @@ async function midiSysex() {
   }
 }
 
-async function ownPackage() {
-  const r = await fetch('firmware.fwsc', { cache: 'no-store' })
-  if (!r.ok) throw new Error(`firmware.fwsc: HTTP ${r.status}`)
+// this project's package for a model (the connected device's: FM-1, SMK-37 Pro, ...)
+async function ownPackage(model) {
+  const file = (build && build.packages && build.packages[model]) || (model === 'FM-1' ? 'firmware.fwsc' : null)
+  if (!file) throw new Error(`this firmware has no build for the ${model}`)
+  const r = await fetch(file, { cache: 'no-store' })
+  if (!r.ok) throw new Error(`${file}: HTTP ${r.status}`)
   return new Uint8Array(await r.arrayBuffer())
 }
 
@@ -496,7 +500,11 @@ async function run(getPkg, { isStock = false, resumeOnly = false } = {}) {
   $('bar').value = 0
   setBusy(true)
   try {
-    const pkg = await getPkg()
+    const up = new Updater(await midiSysex(), log)
+    status('Looking for the FM-1')
+    const dev = await up.find()
+    if (dev) dev.link.close()
+    const pkg = await getPkg(dev ? dev.id.model.replace(/^ota-/i, '') : 'FM-1')
     const product = productOf(pkg)
     const image = logicalImage(pkg)
     const total = 74 + Math.ceil(image.length / 512)
@@ -507,14 +515,10 @@ async function run(getPkg, { isStock = false, resumeOnly = false } = {}) {
       if (k === 'write') $('bar').value = (100 * (74 + a)) / total
       if (k === 'done') $('bar').value = 100
     }
-    const up = new Updater(await midiSysex(), log)
-    status('Looking for the FM-1')
-    const ota = await up.find((id) => /^ota-/i.test(id.model))
-    if (ota) {
-      ota.link.close()
-      log('the FM-1 is in update mode: finishing the install')
+    if (dev && /^ota-/i.test(dev.id.model)) {
+      log(`the ${dev.id.model.slice(4)} is in update mode: finishing the install`)
       status(TEXT.write)
-      if (await up.resume(image, step)) {
+      if (await up.resume(image, step, product)) {
         $('bar').value = 100
         status(TEXT.done)
       } else status(TEXT.stopped)
@@ -547,7 +551,7 @@ $('otherfile').addEventListener('change', async (e) => {
     try {
       const raw = new Uint8Array(await f.arrayBuffer())
       const id = productOf(raw)
-      if (!/^FM-1_\d+$/.test(id)) throw new Error(`its identity is "${id}"`)
+      if (!/^(FM-1|SMK-37 Pro|SMK-37 Elite|MKE-P37)_\d+$/.test(id)) throw new Error(`its identity is "${id}"`)
       other = raw
       $('otherinfo').textContent = `${f.name}: identity ${id}${new TextDecoder('latin1').decode(raw).includes('FELUCCA-LOADER-1') ? '' : ' (not a Felucca-family package)'}`
     } catch (err) {
@@ -582,7 +586,7 @@ $('check').addEventListener('click', async () => {
     else {
       dev.link.close()
       const t = dev.id.text
-      $('checkinfo').textContent = /^ota-/i.test(dev.id.model) ? `${t}: in update mode, an install is not finished (Rescue tab).` : t === 'FM-1_000' ? `${t}: in the USB rescue. Install a firmware.` : build && t === build.identity ? `${t}: runs this project (${build.name} ${build.version}).` : `${t} (on "${dev.name}")`
+      $('checkinfo').textContent = /^ota-/i.test(dev.id.model) ? `${t}: in update mode, an install is not finished (Rescue tab).` : /_000$/.test(t) ? `${t}: in the USB rescue. Install a firmware.` : build && t === build.identity ? `${t}: runs this project (${build.name} ${build.version}).` : `${t} (on "${dev.name}")`
     }
   } catch (e) {
     $('checkinfo').textContent = e.message

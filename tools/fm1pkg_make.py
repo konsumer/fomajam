@@ -14,7 +14,11 @@
 The SDK files are the JieLi AC79 SDK's (AC79NN_SDK_V1.2.1, Apache-2.0), kept in platform/sdk/.
 All integrity checks in the format are CRC16 (poly 0x1021, init 0).
 
-  fm1pkg_make.py APP.bin OTA.bin OUT.fwsc [--product FM-1_9XY] [--sdk DIR]
+  fm1pkg_make.py APP.bin OTA.bin OUT.fwsc [--board fm1|smk37] [--product FM-1_9XY] [--sdk DIR]
+
+--board smk37 (the M-Vave SMK-37: same AC791N, SPL and loader) selects its flash layout: PRCT 0x9D000 and the
+stock SMK-37 region table (VM, BTIF, USRTRIM, USRFLASH, USR), as the Felucca SMK-37 layer (M. Geisler /
+genkigenki) builds it.
 """
 
 import argparse
@@ -23,6 +27,33 @@ from pathlib import Path
 
 APP_SLOT = 0x8DFBC
 FLASH_SIZE = 0x93000
+# per board: (FLASH_SIZE = PRCT = the end of what the update loader writes, APP_SLOT, the region descriptors after
+# app.bin / cfg_tool.bin as (offset, size, flags, resvd, index, name16 or name)). The offsets are ABSOLUTE flash
+# offsets; the bytes after the names are SDK packer fields (VM size, "CODE", "AUTO"); size None = FLASH_SIZE
+BOARDS = {
+  "fm1": (
+    0x93000,
+    0x8DFBC,
+    [
+      (0x93000, 352256, 0x12, 0x80, 0, bytes.fromhex("564d00ffffffffffffffffff00800000")),  # VM
+      (0, None, 0x92, 0x82, 0, bytes.fromhex("5052435400ffffffffffffff434f4445")),  # PRCT
+      (0xE9000, 0x1000, 0x92, 0x80, 0, bytes.fromhex("4254494600ffffffffffffff4155544f")),  # BTIF
+      (0xEA000, 0x12000, 0x92, 0x81, 1, "USR"),
+    ],
+  ),
+  "smk37": (  # the stock SMK-37 Pro v016 package's region table; app slot = the stock app's size, rounded
+    0x9D000,
+    0x97400,
+    [
+      (0x9D000, 0x23000, 0x12, 0x81, 0, bytes.fromhex("564d00ffffffffffffffffff00800000")),  # VM
+      (0, None, 0x92, 0x82, 0, bytes.fromhex("5052435400ffffffffffffff434f4445")),  # PRCT
+      (0xC0000, 0x1000, 0x92, 0x82, 0, bytes.fromhex("4254494600ffffffffffffff4155544f")),  # BTIF
+      (0xC1000, 0x1000, 0x92, 0x81, 0, bytes.fromhex("5553525452494d00ffffffffffffffff")),  # USRTRIM
+      (0xC2000, 0x29000, 0x92, 0x81, 0, bytes.fromhex("555352464c41534800ffffffffffffff")),  # USRFLASH
+      (0xF4000, 0xA000, 0x92, 0x81, 1, "USR"),
+    ],
+  ),
+}
 KEY = 0x980F
 # flash header: JieLi SDK defaults (burner_size 544, VID "0.01", flash_size 0xFF000,
 # fs_ver 0x10, PID "AC791N_STORY"), plain, without its CRC
@@ -97,12 +128,13 @@ def sdk_file(rel):
     raise SystemExit(f"fm1pkg_make: {path}: {e.strerror}")
 
 
-def flash_image(app, key):
+def flash_image(app, key, board="fm1"):
+  flash_size, app_slot, regions = BOARDS[board]
   spl = sdk_file("uboot.boot")  # SDK SPL, BANKCB-encoded as in the SDK
   cfg_tool = sdk_file("cfg_tool.bin")
   eq = sdk_file("cfg/eq_cfg_hw.bin")
   isd = key_blob(key) + b"[FELUCCA]\r\n"
-  f = bytearray(b"\xff" * FLASH_SIZE)
+  f = bytearray(b"\xff" * flash_size)
   # ---- head
   spl_off = 0xA0
   isd_off = spl_off + len(spl)
@@ -121,21 +153,17 @@ def flash_image(app, key):
     enc(head, o, 32)
   f[0 : len(head)] = head
   # ---- app area (plain first, then SFC)
-  if len(app) > APP_SLOT:
-    raise SystemExit(f"app is {len(app)} B, the slot is {APP_SLOT} B")
-  app = app + b"\xff" * (APP_SLOT - len(app))
-  blk = 0x120 + APP_SLOT + len(cfg_tool)  # app_area_head block size
+  if len(app) > app_slot:
+    raise SystemExit(f"app is {len(app)} B, the slot is {app_slot} B")
+  app = app + b"\xff" * (app_slot - len(app))
+  blk = 0x120 + app_slot + len(cfg_tool)  # app_area_head block size
   area = bytearray(b"\xff" * blk)
-  area[0x120 : 0x120 + APP_SLOT] = app
-  area[0x120 + APP_SLOT : blk] = cfg_tool
+  area[0x120 : 0x120 + app_slot] = app
+  area[0x120 + app_slot : blk] = cfg_tool
   ents = [
-    entry(crc16(app), 0x120, APP_SLOT, 0x82, 0xFF, 0, "app.bin"),
-    entry(crc16(cfg_tool), 0x120 + APP_SLOT, len(cfg_tool), 0x82, 0xFF, 0, "cfg_tool.bin"),
-    # region descriptors; the bytes after the names are SDK packer fields (VM size, "CODE", "AUTO")
-    entry(0xFFFF, 0x93000, 352256, 0x12, 0x80, 0, bytes.fromhex("564d00ffffffffffffffffff00800000")),
-    entry(0xFFFF, 0, FLASH_SIZE, 0x92, 0x82, 0, bytes.fromhex("5052435400ffffffffffffff434f4445")),
-    entry(0xFFFF, 0xE9000, 0x1000, 0x92, 0x80, 0, bytes.fromhex("4254494600ffffffffffffff4155544f")),
-    entry(0xFFFF, 0xEA000, 0x12000, 0x92, 0x81, 1, "USR"),
+    entry(crc16(app), 0x120, app_slot, 0x82, 0xFF, 0, "app.bin"),
+    entry(crc16(cfg_tool), 0x120 + app_slot, len(cfg_tool), 0x82, 0xFF, 0, "cfg_tool.bin"),
+    *(entry(0xFFFF, o, flash_size if sz is None else sz, fl, rs, ix, nm) for o, sz, fl, rs, ix, nm in regions),
   ]
   area[32 : 32 + len(b"".join(ents))] = b"".join(ents)
   area[0:32] = entry(crc16(area[32:blk]), 0x02000120, blk, 0x83, 0xFF, 0, "app_area_head")
@@ -145,8 +173,8 @@ def flash_image(app, key):
   cfg = entry(crc16(cfg_body), 0x20, 0x20 + len(cfg_body), 0x83, 0xFF, 1, "cfg") + cfg_body
   region = bytearray(area + cfg)
   sfc(region, 0, len(region), 0, key)
-  if 0x4000 + len(region) > FLASH_SIZE:  # (the update loader writes up to FLASH_SIZE only)
-    raise SystemExit(f"app area too large: ends at 0x{0x4000 + len(region):x}, past 0x{FLASH_SIZE:x}")
+  if 0x4000 + len(region) > flash_size:  # (the update loader writes up to FLASH_SIZE only)
+    raise SystemExit(f"app area too large: ends at 0x{0x4000 + len(region):x}, past 0x{flash_size:x}")
   f[0x4000 : 0x4000 + len(region)] = region
   return bytes(f)
 
@@ -196,13 +224,14 @@ def main():
   ap.add_argument("app", type=Path)
   ap.add_argument("ota", type=Path)
   ap.add_argument("out", type=Path)
+  ap.add_argument("--board", choices=sorted(BOARDS), default="fm1")
   ap.add_argument("--product", default="FM-1_900")
   ap.add_argument("--key", type=lambda s: int(s, 0), default=KEY)
   ap.add_argument("--sdk", type=Path, help="directory with the SDK files (default: platform/sdk)")
   a = ap.parse_args()
   global SDK
   SDK = a.sdk
-  pkg = ufw(flash_image(a.app.read_bytes(), a.key), a.ota.read_bytes(), a.product)
+  pkg = ufw(flash_image(a.app.read_bytes(), a.key, a.board), a.ota.read_bytes(), a.product)
   a.out.write_bytes(pkg)
   print(f"package {a.out}: {len(pkg)} B, identity {a.product}, chip key {a.key:#06x}")
 

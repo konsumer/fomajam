@@ -6,6 +6,10 @@
                               firmware.wasm (the emulator) and firmware.fwsc (the FM-1 package)
   tools/build.py --dev PORT   the same, then serve build/web on PORT and rebuild on every change
 
+firmware.json "boards" (default ["fm1"]) adds "smk37": the M-Vave SMK-37 (same chip, its own panel and flash map;
+platform/hal/smk_input.h), one package per model name (SMK-37 Pro, SMK-37 Elite, MKE-P37), since M-Vave's updater
+only takes a unit's own model. --dev builds the FM-1 only.
+
 The FM-1 part is Dinghy's / Felucca's build (Leo Kuroshita, Hügelton Instruments; zvenson):
 the app, the update loader, the checks that keep a build from bricking the FM-1, the package.
 """
@@ -86,6 +90,50 @@ def tc_all(*cmds):
 OPTIONS = {"usb_audio": "FOMA_USB_AUDIO", "trs_midi": "FOMA_TRS_MIDI", "midi_clock": "FOMA_MIDI_CLOCK"}
 
 
+# the boards firmware.json "boards" can list. smk37: one target per model name (one keyboard, three names)
+SMK_MODELS = [("SMK-37 Pro", ""), ("SMK-37 Elite", "-elite"), ("MKE-P37", "-mke")]
+BOARDS = ("fm1", "smk37")
+
+
+def targets(cfg):
+  """what to build: board, model name, identity, package names (build/, build/web/), output folders, -D flags"""
+  minor = cfg["product"][-1]
+  digits = cfg["identity"].split("_", 1)[1]
+  out = []
+  for board in cfg["boards"]:
+    if board == "fm1":
+      out.append(
+        dict(
+          board="fm1",
+          model="FM-1",
+          product=cfg["product"],
+          pkg=f"{cfg['file']}-{cfg['version']}.fwsc",
+          site="firmware.fwsc",
+          fw=FW,
+          ldr=LDR,
+          defines=cfg["defines"],
+        )
+      )
+      continue
+    for model, suffix in SMK_MODELS:
+      stem = f"smk37{suffix}"
+      # no TRS MIDI in on the SMK-37 (its pin is a key-matrix row): the option is off there
+      defines = [d if not d.startswith("-DFOMA_TRS_MIDI=") else "-DFOMA_TRS_MIDI=0" for d in cfg["defines"]]
+      out.append(
+        dict(
+          board="smk37",
+          model=model,
+          product=f"{model}_{digits}{minor}",
+          pkg=f"{cfg['file']}-{stem}-{cfg['version']}.fwsc",
+          site=f"firmware-{stem}.fwsc",
+          fw=OUT / stem,
+          ldr=OUT / stem / "loader",
+          defines=[*defines, "-DFOMA_SMK37=1", f'-DSMK_MODEL="{model}"'],
+        )
+      )
+  return out
+
+
 def sources():
   return sorted(SRC.glob("**/*.c"))
 
@@ -106,6 +154,9 @@ def config():
   if bad:
     raise BuildError(f"firmware.json: unknown option {', '.join(bad)} (there are: {', '.join(OPTIONS)})")
   c["defines"] = [f"-D{OPTIONS[k]}={int(bool(opts.get(k, True)))}" for k in OPTIONS]
+  c["boards"] = c.get("boards", ["fm1"])
+  if not c["boards"] or not set(c["boards"]) <= set(BOARDS) or len(set(c["boards"])) != len(c["boards"]):
+    raise BuildError(f'firmware.json: "boards" lists some of {", ".join(BOARDS)}, each once')
   return c
 
 
@@ -171,12 +222,14 @@ def ldr_wrap(image):
   return ldr_head(crc16(body), 0x20, len(body), 0x41, LOADER_NAME) + body
 
 
-def build_loader():
+def build_loader(t):
+  LDR = t["ldr"]
   LDR.mkdir(parents=True, exist_ok=True)
   src = PLAT / "loader"
+  board = [d for d in t["defines"] if d.startswith(("-DFOMA_SMK37", "-DSMK_MODEL"))]  # (the FM-1's: none)
   tc_all(
     ("cc", "-c", src / "crt0_ldr.S", "-o", LDR / "crt0_ldr.o"),
-    ("cc", *CFLAGS, *INCLUDES, "-c", src / "loader.c", "-o", LDR / "loader.o"),
+    ("cc", *CFLAGS, *INCLUDES, *board, "-c", src / "loader.c", "-o", LDR / "loader.o"),
   )
   elf = LDR / "loader.elf"
   tc("ld", "--gc-sections", "-e", "_start", "-T", src / "loader.ld", LDR / "crt0_ldr.o", LDR / "loader.o", "-o", elf)
@@ -195,9 +248,10 @@ def build_loader():
 # ---- the app
 
 
-def build_app(cfg):
+def build_app(cfg, t):
+  FW = t["fw"]
   FW.mkdir(parents=True, exist_ok=True)
-  flags = [*CFLAGS, *INCLUDES, f'-DAPP_NAME="{cfg["name"]}"', f'-DAPP_VER="{cfg["version"]}"', f'-DFELUCCA_ID="{cfg["product"]}"', *cfg["defines"]]
+  flags = [*CFLAGS, *INCLUDES, f'-DAPP_NAME="{cfg["name"]}"', f'-DAPP_VER="{cfg["version"]}"', f'-DFELUCCA_ID="{t["product"]}"', *t["defines"]]
   objs, cmds = [], []
   for s in [PLAT / "crt0.S", PLAT / "hal/fm1_vec.S", PLAT / "hal/fm1_isr.S"]:
     objs.append(FW / (s.stem + ".o"))
@@ -207,8 +261,16 @@ def build_app(cfg):
     cmds.append(("cc", *flags, "-c", s, "-o", objs[-1]))
   tc_all(*cmds)
   elf = FW / "firmware.elf"
+  ld = PLAT / "app.ld"
+  slot = fm1pkg_make.BOARDS[t["board"]][1]
+  if slot != APP_SLOT:  # another board's app slot (SMK-37): the same script, its XIP length
+    txt = ld.read_text()
+    if txt.count(f"LENGTH = 0x{APP_SLOT:X}") != 1:
+      raise BuildError("app.ld: the XIP LENGTH line was not found")
+    ld = FW / "app.ld"
+    ld.write_text(txt.replace(f"LENGTH = 0x{APP_SLOT:X}", f"LENGTH = 0x{slot:X}"))
   try:
-    tc("ld", "--gc-sections", "-e", "_start", "-T", PLAT / "app.ld", *objs, "-o", elf)
+    tc("ld", "--gc-sections", "-e", "_start", "-T", ld, *objs, "-o", elf)
   except BuildError as e:
     raise BuildError(explain_link(str(e))) from None
   for sect in ("text.bin", "data.bin", "ramtext.bin"):
@@ -270,7 +332,7 @@ def explain_link(err):
   return "link failed:\n" + "\n".join(out) if out else err
 
 
-def check(img, syms, dis, rt):
+def check(img, syms, dis, rt, slot=APP_SLOT):
   errors, notes = [], []
   m = re.search(r"^([0-9a-f]+) .*\s_start$", syms, re.M)
   if not m or int(m.group(1), 16) != APP_XIP:
@@ -293,8 +355,8 @@ def check(img, syms, dis, rt):
       val = (int(v[0]) & 0xFFFFFFFF) if v[0] else int(v[1], 16) & 0xFFFFFFFF
       if 0xFFC00000 <= val < 0xFFD00000:
         errors.append(f"{fn}: a constant {val:#010x} lies in the chip ROM (a call there bricks the FM-1): change the arithmetic so it never appears")
-  if len(img) > APP_SLOT:
-    errors.append(f"image {len(img)} B exceeds the app slot ({APP_SLOT} B)")
+  if len(img) > slot:
+    errors.append(f"image {len(img)} B exceeds the app slot ({slot} B)")
 
   def sym(name):
     mm = re.search(r"^([0-9a-f]+) .*\s" + name + r"$", syms, re.M)
@@ -302,7 +364,7 @@ def check(img, syms, dis, rt):
 
   ram = sym("_bss_end") - 0x01C08000
   pool = sym("_pool_end") - 0x01C20000
-  notes.append(f"code {len(img) // 1024} of {APP_SLOT // 1024} KiB, RAM {ram // 1024} of 96 KiB, pool {pool // 1024} of 336 KiB")
+  notes.append(f"code {len(img) // 1024} of {slot // 1024} KiB, RAM {ram // 1024} of 96 KiB, pool {pool // 1024} of 336 KiB")
   if ram > 96 * 1024:
     errors.append(f"RAM (.data + .bss) {ram} B > 96 KiB: make big arrays POOL or const")
   if pool > 0x54000:
@@ -351,16 +413,19 @@ def mmio_check():
   return errors
 
 
-def build_fm1(cfg):
-  ota = build_loader()
-  img, syms, dis, rt = build_app(cfg)
-  errors, notes = check(img, syms, dis, rt)
+def build_fm1(cfg, t):
+  ota = build_loader(t)
+  img, syms, dis, rt = build_app(cfg, t)
+  errors, notes = check(img, syms, dis, rt, fm1pkg_make.BOARDS[t["board"]][1])
   errors += mmio_check()
   if errors:
-    raise BuildError("the FM-1 build is refused (it could crash or brick the FM-1):\n" + "\n".join("  " + e for e in errors))
-  pkg = fm1pkg_make.ufw(fm1pkg_make.flash_image(img, fm1pkg_make.KEY), ota, cfg["product"])
-  (SITE / "firmware.fwsc").write_bytes(pkg)
-  (OUT / f"{cfg['file']}-{cfg['version']}.fwsc").write_bytes(pkg)
+    raise BuildError(f"the {t['model']} build is refused (it could crash or brick the {t['model']}):\n" + "\n".join("  " + e for e in errors))
+  try:
+    pkg = fm1pkg_make.ufw(fm1pkg_make.flash_image(img, fm1pkg_make.KEY, t["board"]), ota, t["product"])
+  except SystemExit as e:
+    raise BuildError(str(e)) from None
+  (SITE / t["site"]).write_bytes(pkg)
+  (OUT / t["pkg"]).write_bytes(pkg)
   return notes
 
 
@@ -374,9 +439,9 @@ def build_site():
       shutil.copy(f, SITE / f.name)
 
 
-def build():
+def build(dev_mode=False):
   t0 = time.time()
-  info = {"id": str(time.time_ns()), "wasm": False, "fwsc": False, "log": ""}
+  info = {"id": str(time.time_ns()), "wasm": False, "fwsc": False, "log": "", "packages": {}}
   log = []
   try:
     cfg = config()
@@ -399,12 +464,20 @@ def build():
     except BuildError as e:
       log.append(f"emulator: compile failed\n{e}")
     if info["wasm"]:  # (a compile error is reported once)
-      try:
-        notes = build_fm1(cfg)
-        info["fwsc"] = True
-        log.append(f"FM-1      build/{cfg['file']}-{cfg['version']}.fwsc  identity {cfg['product']}  ({'; '.join(notes)})")
-      except BuildError as e:
-        log.append(f"FM-1: {e}")
+      ok = True
+      for t in targets(cfg):
+        if dev_mode and t["board"] != "fm1":
+          log.append(f"{t['model']:<12} skipped in dev (./fm1 build makes it)")
+          continue
+        try:
+          notes = build_fm1(cfg, t)
+          info["packages"][t["model"]] = t["site"]
+          log.append(f"{t['model']:<12} build/{t['pkg']}  identity {t['product']}  ({'; '.join(notes)})")
+        except BuildError as e:
+          ok = False
+          log.append(f"{t['model']}: {e}")
+          break  # (the same error for every model)
+      info["fwsc"] = ok and "FM-1" in info["packages"]
   except BuildError as e:
     log.append(str(e))
   info["ok"] = info["wasm"] and info["fwsc"]
@@ -434,7 +507,7 @@ def snapshot():
 
 
 def dev(port):
-  build()
+  build(True)
   httpd = ThreadingHTTPServer(("0.0.0.0", port), partial(Quiet, directory=str(SITE)))
   threading.Thread(target=httpd.serve_forever, daemon=True).start()
   print(f"\nemulator, installer and rescue: http://localhost:{port}  (rebuilds when you save; ctrl-c stops)\n")
@@ -446,7 +519,7 @@ def dev(port):
       if now != seen:
         seen = now
         print("\nchanged, rebuilding ...")
-        build()
+        build(True)
   except KeyboardInterrupt:
     pass
 

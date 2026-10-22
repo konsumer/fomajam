@@ -7,6 +7,8 @@
  *   OCT- held at power-on   the USB rescue: no sound, only the updater
  *   crashes twice at boot   the USB rescue by itself
  *
+ * FOMA_SMK37 builds it for the M-Vave SMK-37 (same chip): its panel is mapped onto the FM-1's (see "the panel").
+ *
  * APP_NAME, APP_VER, FELUCCA_ID come from tools/build.py (firmware.json). */
 #include "fm1.h"
 
@@ -16,12 +18,22 @@
 #include "fm1_sys.h"
 #include "fm1_irq.h"
 #include "fm1_guard.h"
+#if FOMA_SMK37
+#include "smk_input.h" /* keys, pads, buttons, knobs, LEDs; the MASTER knob as K1 */
+#else
 #include "fm1_input.h"
+#endif
 #include "fm1_timer.h"
 #include "fm1_lcd_hw.h"
 #include "fm1_audio.h"
+#if !FOMA_SMK37
 #include "fm1_adc.h"
+#endif
 #include "bootguard.h"
+
+#if FOMA_SMK37 && FOMA_TRS_MIDI
+#error "FOMA_SMK37: no TRS MIDI in (PH8, the FM-1's MIDI in, is a key-matrix row on the SMK-37)"
+#endif
 
 #ifndef APP_NAME
 #define APP_NAME "FOMA"
@@ -58,11 +70,20 @@ static volatile uint32_t fm1_ms; /* milliseconds since power-on (TIMER5) */
 #endif
 
 /* ---- flash: read anywhere; erase / program only the update's staging area and the settings sectors
- * (Felucca's globals, 0xFC000..0xFF000: below them are the update records, above the MAC key) */
+ * (FM-1: Felucca's globals, 0xFC000..0xFF000: below them are the update records, above the MAC key;
+ * SMK-37: the start of the VM, 0x9D000..0xA0000, as hal/fm1_flash.h maps it) */
+#if FOMA_SMK37
+#define SETTINGS_AT 0x0009D000u
+#define SETTINGS_END 0x000A0000u
+#else
 #define SETTINGS_AT 0x000FC000u
 #define SETTINGS_END 0x000FF000u
+#endif
 #define FL_RANGE_OK(off, n) (FL_IN(off, n, FL_OTA_LO, FL_OTA_HI) || FL_IN(off, n, SETTINGS_AT, SETTINGS_END))
 #include "fm1_flash.h"
+#if FOMA_SMK37
+_Static_assert(SETTINGS_AT >= FL_DATA_LO && SETTINGS_END <= FL_DATA_HI, "SMK: the settings must be in FL_DATA");
+#endif
 static uint8_t flash_ok;
 static int st_read(uint32_t off, void *dst, uint32_t n) {
   uint8_t *d = dst;
@@ -81,7 +102,11 @@ static int st_read(uint32_t off, void *dst, uint32_t n) {
 }
 
 static uint8_t recovery_active;
+#if FOMA_SMK37
+#define OTA_IDENTITY (recovery_active ? SMK_MODEL "_000" : FELUCCA_ID)
+#else
 #define OTA_IDENTITY (recovery_active ? "FM-1_000" : FELUCCA_ID)
+#endif
 #include "ota.c"
 static void recovery_poll(void);
 static uint32_t ota_now_ms(void) { return fm1_ms; }
@@ -216,6 +241,29 @@ uint32_t millis(void) { return fm1_ms; }
 uint32_t micros(void) { return fm1_micros(); }
 
 /* ---- the panel, as seen by one pass of loop() */
+#if FOMA_SMK37
+/* The SMK-37's panel as the FM-1's, as the Felucca SMK-37 layer maps it (printed SMK label = FM-1 function):
+ * OCTAVE- / OCTAVE+ = OCT- / OCT+, FX = FX, SCALE = SEL, CHORD = ENV, NOTE REPEAT = LFO, PARA = EDIT,
+ * GLOBE = GLO, PATCH = HOME, BT = SAVE, ARP = ARP, SEQ = SEQ, SEQ PLAY = PLAY, SEQ REC = REC (KNOB BANK,
+ * FADER BANK, < and > are free). Knobs: K1 = MASTER (smk_input.h), K2 = SELECT, K3 = ALGORITHM,
+ * K4 = PRESETS, K5..K8 = KNOB 1..4. Keys: the middle 27 (F3..G5). Pads: the 16 white keys, in reading
+ * order (top row F3..F4, bottom row G4..G5), lit where those keys' LEDs would be. */
+static const uint8_t SMK_BTN_OF[BTN_COUNT] = {
+    SMK_BTN_OCT_DOWN, SMK_BTN_OCT_UP, SMK_BTN_FX, SMK_BTN_SCALE, SMK_BTN_CHORD, SMK_BTN_NOTE_REPEAT, SMK_BTN_PARA,
+    SMK_BTN_GLOBE, SMK_BTN_PATCH, SMK_BTN_BT, SMK_BTN_ARP, SMK_BTN_SEQ, SMK_BTN_SEQ_PLAY, SMK_BTN_SEQ_REC};
+static const uint8_t SMK_ENC_OF[ENC_COUNT] = {1, 2, 4, 5, 6, 7, 3}; /* SELECT, ALGORITHM, KNOB 1..4, PRESETS */
+static uint32_t panel_buttons(uint32_t b) {
+  uint32_t r = 0, i;
+  for (i = 0; i < BTN_COUNT; i++) {
+    r |= (b >> SMK_BTN_OF[i] & 1u) << i;
+  }
+  return r;
+}
+#define PANEL_ENC(e) SMK_ENC_OF[e]
+#else
+#define panel_buttons(b) (b)
+#define PANEL_ENC(e) (e)
+#endif
 static uint32_t in_keys, in_kp, in_kr, in_btn, in_bp, in_br, in_master = 512;
 static int32_t in_enc[ENC_COUNT];
 static void input_snapshot(void) {
@@ -223,11 +271,11 @@ static void input_snapshot(void) {
   in_kp = taps | (now & ~in_keys);
   in_kr = (in_keys & ~now) | (taps & ~now);
   in_keys = now;
-  in_bp = fm1_input_edges(&rel);
-  in_br = rel;
-  in_btn = fm1_in.buttons;
+  in_bp = panel_buttons(fm1_input_edges(&rel));
+  in_br = panel_buttons(rel);
+  in_btn = panel_buttons(fm1_in.buttons);
   for (e = 0; e < ENC_COUNT; e++) {
-    in_enc[e] = fm1_enc_take(e);
+    in_enc[e] = fm1_enc_take(PANEL_ENC(e));
   }
 }
 uint32_t keys(void) { return in_keys; }
@@ -240,6 +288,34 @@ int button_pressed(int b) { return (unsigned)b < BTN_COUNT && (in_bp >> b & 1u);
 int button_released(int b) { return (unsigned)b < BTN_COUNT && (in_br >> b & 1u); }
 int32_t encoder(int e) { return (unsigned)e < ENC_COUNT ? in_enc[e] : 0; }
 uint32_t master_knob(void) { return in_master; }
+#if FOMA_SMK37
+static uint8_t pad_lit[SMK_NPAD], pad_glow;
+static void pad_show(uint32_t p) {
+  static const uint8_t GLOW[3] = {0, 2, 6}; /* led_backlight: the unlit pads */
+  uint8_t v = pad_lit[p] ? 48u : GLOW[pad_glow];
+  padled_set(p, v, v, v);
+}
+void led_key(int k, int on) {
+  for (uint32_t p = 0; p < SMK_NPAD; p++) { /* a white key's pad; the black keys have none */
+    if (SMK_WHITE_NOTE[p] == (uint32_t)k) {
+      pad_lit[p] = on != 0;
+      pad_show(p);
+    }
+  }
+}
+void led_button(int b, int on) {
+  if ((unsigned)b < BTN_COUNT) {
+    fm1_led_key(SMK_BTN_OF[b], on);
+  }
+}
+void led_backlight(int level) {
+  pad_glow = (uint8_t)(level < 0 ? 0 : level > 2 ? 2
+                                                 : level);
+  for (uint32_t p = 0; p < SMK_NPAD; p++) {
+    pad_show(p);
+  }
+}
+#else
 void led_key(int k, int on) {
   if ((unsigned)k < KEY_COUNT) {
     fm1_led_key(14u + (uint32_t)k, on);
@@ -270,6 +346,7 @@ void led_backlight(int level) {
   was = (int8_t)level;
   fm1_led_bg_ns = NS[level];
 }
+#endif
 void print(const char *s) { (void)s; }
 
 /* ---- the timer: 10 kHz key scan, milliseconds, USB at 2 kHz. It outranks the audio ISR; nested in a
@@ -444,12 +521,24 @@ void fm1_cstart(void) {
   if (boot_mode == BOOT_RECOVERY || recovery_key()) {
     recovery_main(); /* OCT- at power-on: the USB rescue */
   }
+#if FOMA_SMK37
+  flash_ok = FL_JEDEC_OK(FL_FAR(fl_jedec_ram)());
+#else
   flash_ok = FL_FAR(fl_jedec_ram)() == 0x856014u;
+#endif
   ota_boot_cleanup();
   lcd_init();
   lcd_fill(0, 0, 240, 240, C_BLACK);
   fm1_input_init();
   fm1_adc_init();
+#if FOMA_SMK37
+  if (flash_ok) { /* this unit's key and pad velocity curves (read only; the defaults otherwise) */
+    uint8_t trim[SMK_TRIM_LEN];
+    if (!st_read(SMK_TRIM_FLASH, trim, sizeof trim)) {
+      smk_trim_load(trim);
+    }
+  }
+#endif
   fm1_audio_init(abuf, HALF_WORDS, isr_alnk0, 3); /* (abuf is zero: .bss) */
   usb_start();
 #if FOMA_TRS_MIDI
@@ -465,5 +554,8 @@ void fm1_cstart(void) {
     input_snapshot();
     loop();
     screen_flush();
+#if FOMA_SMK37
+    padled_flush(); /* the pads' colours, between LCD transfers */
+#endif
   }
 }

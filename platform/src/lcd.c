@@ -128,3 +128,43 @@ static void lcd_init(void)
     lcd_fill(0, 0, 240, 240, 0);
     lcd_cmd(0x29);
 }
+
+#if FOMA_SMK37
+/* The SMK-37's 16 RGB pads (from the Felucca SMK-37 layer, M. Geisler / genkigenki): WS2812-class LEDs on SPI1
+ * group B (PC10), one SPI byte per LED bit (0xF0 = 1, 0xC0 = 0, MSB first, GRB), 250 zero bytes of reset first
+ * (~300 us: a shorter reset lets a glitch at the pin switch count as a first bit on newer parts). The frame goes
+ * out between LCD transfers, blocking for ~0.8 ms; padled_flush() only sends when a colour changed. */
+#define PADLED_N 16u
+#define PADLED_LATCH 250u
+static uint8_t padled_buf[PADLED_LATCH + PADLED_N * 24u];
+static uint32_t padled_grb[PADLED_N];
+static uint8_t padled_dirty = 1;
+/* hardware pad (0..7 top row, 8..15 bottom row, left to right) -> position in the chain (stock table) */
+static const uint8_t PADLED_SLOT[PADLED_N] = {0, 15, 14, 13, 12, 11, 10, 9, 1, 2, 3, 4, 5, 6, 7, 8};
+
+static void padled_set(uint32_t pad, uint8_t r, uint8_t g, uint8_t b)
+{
+    uint32_t c = (uint32_t)g << 16 | (uint32_t)r << 8 | b;
+    if (pad < PADLED_N && padled_grb[pad] != c) {
+        padled_grb[pad] = c;
+        padled_dirty = 1;
+    }
+}
+
+static void padled_flush(void)
+{
+    uint32_t p, i;
+    if (!padled_dirty)
+        return;
+    padled_dirty = 0;
+    for (p = 0; p < PADLED_N; p++) {
+        uint8_t *o = padled_buf + PADLED_LATCH + PADLED_SLOT[p] * 24u;
+        for (i = 0; i < 24u; i++)
+            o[i] = (padled_grb[p] >> (23u - i)) & 1u ? 0xF0u : 0xC0u;
+    }
+    lcd_sync();
+    fm1_padled_send(padled_buf, sizeof padled_buf);
+    fm1_lcd_wait();
+    fm1_padled_done();
+}
+#endif

@@ -11,12 +11,23 @@
 #define FELUCCA_OTA 1
 #define FELUCCA_OTA_DRYRUN 0
 #define FELUCCA_USB_PID 0x0002
+#include "fm1_cc.h"                             /* FOMA_SMK37, SMK_MODEL */
+#if FOMA_SMK37
+#define FELUCCA_ID "ota-" SMK_MODEL "_900"
+#else
 #define FELUCCA_ID "ota-FM-1_900"
+#endif
 #define RING_PUBLISH() __asm__ volatile("" ::: "memory")
 #include "fm1_time.h"
 #include "fm1_sys.h"
 /* the loader may write the app area and erase update records; never the head */
+#if FOMA_SMK37
+/* SMK-37: the app area 0x4000..0x9CFFF, records only in the VM 0x9D000..0xBFFFF: never BTIF / USRTRIM
+ * 0xC0000..0xC1FFF, USR or key_mac (fm1_flash.h FL_LDR_RANGE_OK; FL_GUARD refuses those on its own too) */
+#define FL_RANGE_OK(off, n) FL_LDR_RANGE_OK(off, n)
+#else
 #define FL_RANGE_OK(off, n) (FL_IN(off, n, 0x4000u, 0x93000u) || FL_IN(off, n, 0x93000u, 0xFC000u))
+#endif
 #include "fm1_flash.h"
 #include "../src/libc.c"
 #include "../src/usb.c"
@@ -70,7 +81,11 @@ static void ldr_record_clear(void)
 {
     fm1_updata_parm_clear();                        /* CRC 0: the SPL ignores it on a warm reset */
 }
+#if FOMA_SMK37
+static int ldr_flash_known(void) { return FL_JEDEC_OK(fl_jedec_ram()); }   /* as the app (fm1.c) */
+#else
 static int ldr_flash_known(void) { return fl_jedec_ram() == 0x856014u; }   /* as the app (project.c) */
+#endif
 static void ldr_progress(uint32_t done, uint32_t total) { (void)done; (void)total; ldr_poll(); }
 #include "ldr_core.c"
 

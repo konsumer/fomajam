@@ -11,6 +11,10 @@ const UPGRADE = [0xf0, 0x22, 0x24, 0x35, 0x7f, 0xf7]
 const MAXDATA = 512
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const IS_OTA = (id) => /^ota-/i.test(id.model)
+// the same model ("ota-" aside): a package installs only on its own model. The FM-1 and the M-Vave SMK-37 share the
+// chip and its key, so the update loaders would take each other's packages: never mix them (nor the SMK-37 Pro,
+// SMK-37 Elite and MKE-P37 builds, which M-Vave's updater tells apart)
+export const sameModel = (a, b) => a.replace(/^ota-/i, '') === b.replace(/^ota-/i, '')
 
 // errors carry a code the pages translate: notfound, model, stopped, noloader, lost, noreturn,
 // mismatch (detail: the identity the device reports), badreq
@@ -160,7 +164,7 @@ export class Updater {
     const outs = [...this.access.outputs.values()]
     for (const input of this.access.inputs.values()) {
       if (input.state === 'disconnected') continue
-      if (!/fm-1|felucca|ota|composite|sinco|usb-midi/i.test(input.name || '')) continue // never probe other gear
+      if (!/fm-1|smk|mke|starry|felucca|ota|composite|sinco|usb-midi/i.test(input.name || '')) continue // never probe other gear
       const output = outs.find((o) => o.name === input.name) || (outs.length === 1 ? outs[0] : null)
       if (!output) continue
       try {
@@ -223,9 +227,9 @@ export class Updater {
     const dev = await this.find((id) => !IS_OTA(id))
     if (!dev) throw fail('notfound', 'FM-1 not found (USB cable, and no other app using it?)')
     const [model] = product.split('_')
-    if (dev.id.model !== model) {
+    if (!sameModel(dev.id.model, model)) {
       dev.link.close()
-      throw fail('model', `the device is ${dev.id.text}, the package is for ${product}`)
+      throw fail('model', `the device is ${dev.id.text}, the package is for ${product}`, dev.id.text)
     }
     step('start', dev.id.text)
     dev.link.send(UPGRADE)
@@ -258,10 +262,15 @@ export class Updater {
     return s2
   }
 
-  // resume: the device is already in update mode (loader) -> true when the write finished
-  async resume(image, onStep) {
+  // resume: the device is already in update mode (loader) -> true when the write finished. product: the
+  // package's identity; the loader must be the same model (sameModel), and without the identity nothing is written
+  async resume(image, onStep, product = '') {
     const ota = await this.find(IS_OTA)
     if (!ota) return false
+    if (!product || !sameModel(ota.id.model, product.split('_')[0])) {
+      ota.link.close()
+      throw fail('model', `the device is in the update mode of ${ota.id.text}, the package is for ${product || 'an unknown model'}`, ota.id.text)
+    }
     return (await this.write(ota, image, onStep || (() => {}))).finished
   }
 }
