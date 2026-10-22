@@ -1,6 +1,6 @@
 # FOMAJAM
 
-A groovebox firmware for the M-VAVE FM-1, made with [foma](https://github.com/konsumer/foma).
+A groovebox firmware for the M-VAVE FM-1 (and the [M-VAVE SMK-37](#m-vave-smk-37)), made with [foma](https://github.com/konsumer/foma).
 
 - 9 tracks, each playing its own machine:
   - **drum machines:** modeled 808, 909, SDS-V and CR-78; the 707, 606, DMX, LinnDrum, 505, DR-55, SK-1, KPR-77 and
@@ -222,13 +222,63 @@ or a phone.
 find in the dark, or on an FM-1 with dark keys: `OFF`, `LOW` or `FULL`. Lit keys and buttons still stand out above it.
 It's saved with the song.
 
+## M-VAVE SMK-37
+
+The SMK-37 (Pro, Elite, and the MKE-P37, which is the same keyboard) has the FM-1's chip, so FOMAJAM runs on it too.
+Each model has its own package, because M-VAVE's updater only takes a keyboard's own model:
+`fomajam-smk37-VERSION.fwsc` (SMK-37 Pro, also the Donner Starrykey 37 Play), `fomajam-smk37-elite-VERSION.fwsc` and
+`fomajam-smk37-mke-VERSION.fwsc`. The install page picks the right one for the connected keyboard.
+
+The FM-1's controls are on the SMK-37's panel, so everything above applies:
+
+| FM-1           | SMK-37                                                                   |
+| -------------- | ------------------------------------------------------------------------ |
+| MASTER         | K1                                                                       |
+| `SELECT`       | K2                                                                       |
+| `ALGORITHM`    | K3                                                                       |
+| `PRESETS`      | K4                                                                       |
+| KNOB1–4        | FADER1–4 (each sets the control's whole range), and K5–K8 (step by step) |
+| `SEQ`          | SEQ (PATTERN)                                                            |
+| `EDIT`         | PATCH (SOUND)                                                            |
+| `HOME`         | PARA (MIX, SCOPE, MIDI IN)                                               |
+| `FX`           | FX                                                                       |
+| `GLO`          | GLOBE (GLOBAL)                                                           |
+| `SEL`          | SCALE, or KNOB BANK (KNOB BANK never toggles a slide)                    |
+| `ARP`          | NOTE REPEAT (the ratchet)                                                |
+| `ENV`          | CHORD (clear the pattern)                                                |
+| `SAVE`         | BT                                                                       |
+| `PLAY` / `REC` | SEQ PLAY / SEQ REC                                                       |
+| `OCT-/OCT+`    | OCTAVE- / OCTAVE+                                                        |
+| the 27 keys    | the middle 27 keys (F3–G5)                                               |
+| the white keys | also the 16 pads, top row first: on PATTERN, the steps                   |
+
+A fader takes over once you move it (also after a page, track or bank change), so nothing jumps. And what only the
+SMK-37 has:
+
+| SMK-37        | What it does                                                                                                     |
+| ------------- | ---------------------------------------------------------------------------------------------------------------- |
+| keys and pads | play with velocity (the keys use the keyboard's own factory calibration)                                         |
+| PITCH wheel   | bends the chosen track ±2 semitones; on a MIDI track it sends pitch bend                                         |
+| MOD wheel     | vibrato on the chosen track; on a MIDI track it sends CC 1                                                       |
+| FADER BANK    | makes the faders a mixer: the levels of tracks 1–4, then 5–8, then 9, then back to the screen (lit while mixing) |
+| `<` / `>`     | the pattern before or after (playing, it plays when the current one ends)                                        |
+| pad colors    | the screen's: steps in their track or drum-voice color, the playhead white, the MIX page in track colors         |
+
+The black keys' lights (the tracks on the PATTERN page) have no place on the SMK-37. Not used yet: ARP (there is no
+arpeggiator), the outer 10 keys and the pedal. The SMK-37 has no MIDI in on its TRS jack, so MIDI in is USB only.
+
+The SMK-37 build has not been tested on a keyboard yet. It uses the hardware map and board code of the
+[SMK-37 port kit](https://github.com/genkigenki/fm1-to-smk37) (genkigenki), which other FM-1 firmwares run on, and it
+never writes the SMK-37's factory calibration or M-VAVE's own data. Hold OCTAVE- while switching on for the USB
+rescue. To go back to the official firmware, use M-VAVE's updater for your model.
+
 ## Develop
 
 You only need Docker:
 
 ```sh
 ./fm1 dev          # http://localhost:8000: the emulator, installer and rescue; rebuilds when you save
-./fm1 build        # build/fomajam-VERSION.fwsc
+./fm1 build        # build/fomajam-VERSION.fwsc, and the SMK-37 packages (firmware.json "boards")
 ```
 
 | File                                     | What it is                                                            |
@@ -261,13 +311,16 @@ build/render --song song.wav  # 8 seconds of the starting song (add N for patter
 build/render --midi           # the MIDI messages a MIDI track and the clock send in one bar, with their times
 ```
 
+`node test/fm1ota_test.mjs` checks that the installer never writes a package to another model (an FM-1 package to an
+SMK-37, or the other way).
+
 The functions the firmware can call are in [platform/fm1.h](platform/fm1.h): it's [foma](https://github.com/konsumer/foma)'s
 platform, with its USB audio, TRS MIDI and MIDI clock options on. The name, version, package identity and those options
 are in [firmware.json](firmware.json). The rules of the chip (no floating point, keep `audio()` short, and so on) are
 in [foma's README](https://github.com/konsumer/foma#the-rules-of-the-chip).
 
 Every push to `main` publishes the emulator and installer to GitHub Pages (Settings → Pages → Source: GitHub Actions).
-Pushing a tag (like `v0.2`) also creates a release with the `.fwsc` file.
+Pushing a tag (like `v0.2`) also creates a release with the `.fwsc` files (the FM-1's and the SMK-37's).
 
 Installing firmware is at your own risk. If the FM-1 doesn't start, hold OCT- while switching it on to enter USB
 rescue mode, then install from the page.

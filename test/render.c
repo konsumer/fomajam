@@ -49,6 +49,11 @@ uint32_t keys(void) { return 0; }
 void led_key(int k, int o) {}
 void led_button(int b, int o) {}
 void led_backlight(int l) {}
+void led_key_color(int k, uint16_t c) {}
+int key_velocity(int k) { return 100; }
+int pitch_wheel(void) { return 0; }
+int mod_wheel(void) { return 0; }
+int fader(int i) { return -1; }
 /* the platform's MIDI clock at the song's tempo, a block before each audio() as on the FM-1 */
 #define CLOCK_MUL ((uint64_t)44100u * 4294967296u / 1000000u)
 #include "clock.c"

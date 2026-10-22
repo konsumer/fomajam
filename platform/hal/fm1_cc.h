@@ -8,3 +8,16 @@
 #pragma once
 
 #define FM1_INLINE static inline __attribute__((always_inline))
+
+/* Target board: 0 = FM-1 (default), 1 = M-Vave SMK-37 (same AC791N, SPL and update loader; different
+ * panel wiring and flash map). tools/build.py sets it for firmware.json "boards": ["smk37"]. The FM-1
+ * build gets no new flag, so it stays byte-identical. */
+#ifndef FOMA_SMK37
+#define FOMA_SMK37 0
+#endif
+/* SMK_MODEL: the model name an SMK build reports (its identity, its update loader's). The SMK-37 Pro,
+ * SMK-37 Elite and MKE-P37 are one keyboard under three names, and M-Vave's updater only takes a
+ * unit's own factory package, so each gets its own build. */
+#if FOMA_SMK37 && !defined(SMK_MODEL)
+#define SMK_MODEL "SMK-37 Pro"
+#endif

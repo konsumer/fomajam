@@ -21,9 +21,20 @@
  *   ota_show(step, code)       progress / result for the screen
  *   ota_commit(parm)           write RAM record + reset (never returns on hardware)
  */
+#if FOMA_SMK37
+/* SMK-37: the last 5 sectors of the stock VM (0xBB000..0xBFFFF, fm1_flash.h FL_OTA), below BTIF / USRTRIM;
+ * the update loader drops records only below 0xC0000 (ldr_core.c) */
+#define OTA_AREA 0x000BB000u                     /* staged loader, 5 x 4 KiB */
+#define OTA_AREA_LEN 0x5000u
+#define OTA_RES (OTA_AREA + OTA_AREA_LEN - 0x100u)  /* 0xBFF00 = 4K boundary - 256: SPL scan */
+#define OTA_FL_LEN 0x9D000u                      /* flash.bin = [0, the PRCT end): only this board's packages */
+#define OTA_PARM_ID "ota-" SMK_MODEL "_016"       /* the stock loader's identity (Pro 18 B, Elite 20 B) */
+_Static_assert(OTA_AREA + OTA_AREA_LEN <= 0xC0000u && OTA_AREA >= 0x9D000u, "SMK: OTA area outside the VM");
+#else
 #define OTA_AREA 0x000E0000u                     /* staged loader, 5 x 4 KiB */
 #define OTA_AREA_LEN 0x5000u
 #define OTA_RES (OTA_AREA + OTA_AREA_LEN - 0x100u)  /* 0xE4F00 = 4K boundary - 256: SPL scan */
+#endif
 #define OTA_LDR_HCRC 0xEBAAu                     /* official update loader (usb_hid_ota.bin) */
 #define OTA_LDR_DCRC 0x5881u
 #define OTA_LDR_LEN 0x4DE1u
@@ -277,6 +288,10 @@ static int ota_stage(void)                       /* steps 1..6; 0 = host said su
         return rc;
     if (!fl_off || !ota_off)
         return -3;
+#ifdef OTA_FL_LEN
+    if (fl_len != OTA_FL_LEN)                    /* another board's package (an FM-1's on an SMK) */
+        return -3;
+#endif
     /* 2. which loader: the official one (known CRCs; it rewrites the whole flash.bin
      *    including the head) or Felucca's own (app area only, checks the chip key) */
     if (ota_read(ota_off, b, 512))
@@ -366,8 +381,13 @@ static int ota_session(void)
     ota_wr16(parm + 2, 0x5A0Du);
     ota_wr16(parm + 4, 0x5A01u);
     ota_wr16(parm + 6, 0x5441u);
+#ifdef OTA_PARM_ID
+    for (i = 0; i < sizeof OTA_PARM_ID - 1u; i++)
+        parm[8 + i] = (uint8_t)OTA_PARM_ID[i];    /* the loader's own USB identity */
+#else
     for (i = 0; i < 12u; i++)
         parm[8 + i] = (uint8_t)"ota-FM-1_015"[i];    /* the loader's own USB identity */
+#endif
     ota_wr32(parm + 72, OTA_AREA);
     ota_wr16(parm, ota_crc16(parm + 2, 78, 0));
 #if FELUCCA_OTA_DRYRUN

@@ -124,6 +124,7 @@ void synth_load(int t, int p); /* preset p of track t's engine into song.track[t
 /* between engine.c and drums.c / synths.c */
 void synths_note(int t, int note, int vel, int slide, int32_t gate); /* gate: frames, -1 held */
 void synths_off(int t, int note);
+void synths_bend(int t, int bend, int depth); /* the wheels: bend in 1/16 semitones, vibrato depth 0..127 */
 void synths_render(int t, int32_t *out, uint32_t n); /* track t, at its level; n: CTL (32) frames */
 void synths_stop(void);
 void drums_hit(int t, int v, int vel);
