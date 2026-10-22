@@ -96,6 +96,18 @@ void led_key(int k, int on) {
     led_k = on ? led_k | 1u << k : led_k & ~(1u << k);
   }
 }
+void led_key_color(int k, uint16_t color) { led_key(k, color != 0); }
+/* the emulator is an FM-1: no velocity, wheels or faders */
+int key_velocity(int k) {
+  (void)k;
+  return 100;
+}
+int pitch_wheel(void) { return 0; }
+int mod_wheel(void) { return 0; }
+int fader(int i) {
+  (void)i;
+  return -1;
+}
 void led_button(int b, int on) {
   if ((unsigned)b < BTN_COUNT) {
     led_b = on ? led_b | 1u << b : led_b & ~(1u << b);

@@ -22,6 +22,12 @@
 #ifndef FOMA_MIDI_CLOCK
 #define FOMA_MIDI_CLOCK 1 /* midi_clock: one MIDI clock for audio(), its own or followed: clock_*() */
 #endif
+/* the board: 0 the FM-1 (and the emulator), 1 the M-Vave SMK-37 (firmware.json "boards"). The calls below are the
+ * same on both; the SMK-37's extras (velocity, wheels, faders, its four more buttons, colored pads) answer
+ * "nothing there" on the FM-1 */
+#ifndef FOMA_SMK37
+#define FOMA_SMK37 0
+#endif
 
 void setup(void);
 void loop(void);
@@ -39,6 +45,7 @@ uint32_t keys(void);      /* bit k: key k held */
 int key_held(int k);
 int key_pressed(int k);
 int key_released(int k);
+int key_velocity(int k); /* 1..127: how hard key k was last played (SMK-37: its key or pad); the FM-1: always 100 */
 
 /* ---- buttons */
 enum {
@@ -56,6 +63,10 @@ enum {
   BTN_SEQ,
   BTN_PLAY,
   BTN_REC,
+  BTN_KNOB_BANK, /* the SMK-37's own four: never pressed on the FM-1 */
+  BTN_FADER_BANK,
+  BTN_LEFT,
+  BTN_RIGHT,
   BTN_COUNT
 };
 uint32_t buttons(void); /* bit b: button b held */
@@ -77,8 +88,16 @@ enum {
 int32_t encoder(int e);
 uint32_t master_knob(void); /* the MASTER knob 0..1023; it is also the volume */
 
+/* ---- the SMK-37's wheels and faders (the FM-1: none) */
+int pitch_wheel(void); /* -8192..8191, 0 at rest (it calibrates itself as it is used); the FM-1: 0 */
+int mod_wheel(void);   /* 0..127, 0 at the bottom; the FM-1: 0 */
+#define FADER_COUNT 4
+int fader(int i); /* fader i (0..3, left to right): 0..127; -1 if there is none (the FM-1) */
+
 /* ---- LEDs */
 void led_key(int k, int on);
+void led_key_color(int k, uint16_t color); /* RGB565, 0 = off: the SMK-37's pads (the white keys) light in it; the
+                                              FM-1's key LEDs just go on */
 void led_button(int b, int on);
 void led_backlight(int level); /* every key and button glows dimly: 0 off, 1 low, 2 full */
 

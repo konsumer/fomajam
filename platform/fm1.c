@@ -241,16 +241,18 @@ uint32_t millis(void) { return fm1_ms; }
 uint32_t micros(void) { return fm1_micros(); }
 
 /* ---- the panel, as seen by one pass of loop() */
+#define FM1_BUTTONS 14u /* the FM-1's own buttons: BTN_OCT_DOWN .. BTN_REC, its hardware ids */
 #if FOMA_SMK37
 /* The SMK-37's panel as the FM-1's, as the Felucca SMK-37 layer maps it (printed SMK label = FM-1 function):
  * OCTAVE- / OCTAVE+ = OCT- / OCT+, FX = FX, SCALE = SEL, CHORD = ENV, NOTE REPEAT = LFO, PARA = EDIT,
- * GLOBE = GLO, PATCH = HOME, BT = SAVE, ARP = ARP, SEQ = SEQ, SEQ PLAY = PLAY, SEQ REC = REC (KNOB BANK,
- * FADER BANK, < and > are free). Knobs: K1 = MASTER (smk_input.h), K2 = SELECT, K3 = ALGORITHM,
+ * GLOBE = GLO, PATCH = HOME, BT = SAVE, ARP = ARP, SEQ = SEQ, SEQ PLAY = PLAY, SEQ REC = REC, and its own
+ * KNOB BANK, FADER BANK, < and >. Knobs: K1 = MASTER (smk_input.h), K2 = SELECT, K3 = ALGORITHM,
  * K4 = PRESETS, K5..K8 = KNOB 1..4. Keys: the middle 27 (F3..G5). Pads: the 16 white keys, in reading
  * order (top row F3..F4, bottom row G4..G5), lit where those keys' LEDs would be. */
 static const uint8_t SMK_BTN_OF[BTN_COUNT] = {
-    SMK_BTN_OCT_DOWN, SMK_BTN_OCT_UP, SMK_BTN_FX, SMK_BTN_SCALE, SMK_BTN_CHORD, SMK_BTN_NOTE_REPEAT, SMK_BTN_PARA,
-    SMK_BTN_GLOBE, SMK_BTN_PATCH, SMK_BTN_BT, SMK_BTN_ARP, SMK_BTN_SEQ, SMK_BTN_SEQ_PLAY, SMK_BTN_SEQ_REC};
+    SMK_BTN_OCT_DOWN, SMK_BTN_OCT_UP, SMK_BTN_FX, SMK_BTN_SCALE, SMK_BTN_CHORD, SMK_BTN_NOTE_REPEAT,
+    SMK_BTN_PARA, SMK_BTN_GLOBE, SMK_BTN_PATCH, SMK_BTN_BT, SMK_BTN_ARP, SMK_BTN_SEQ,
+    SMK_BTN_SEQ_PLAY, SMK_BTN_SEQ_REC, SMK_BTN_KNOB_BANK, SMK_BTN_FADER_BANK, SMK_BTN_LEFT, SMK_BTN_RIGHT};
 static const uint8_t SMK_ENC_OF[ENC_COUNT] = {1, 2, 4, 5, 6, 7, 3}; /* SELECT, ALGORITHM, KNOB 1..4, PRESETS */
 static uint32_t panel_buttons(uint32_t b) {
   uint32_t r = 0, i;
@@ -260,6 +262,53 @@ static uint32_t panel_buttons(uint32_t b) {
   return r;
 }
 #define PANEL_ENC(e) SMK_ENC_OF[e]
+
+/* the wheels (mux C addresses 4 = pitch, 5 = mod), self-calibrating, as the Felucca SMK-37 layer does it: the pitch
+ * wheel's rest is its centre (taken once the readings settle, followed slowly while it rests), and each wheel's range
+ * grows to what it has reached (the travel is short and differs between units: raw ~445..640 pitch, ~474..629 mod,
+ * up = lower raw). Pitch: -8192..8191 with a dead band around the centre; mod: 0..127 */
+static int32_t wheel_bend, wheel_mod;
+static void wheels(void) {
+  enum { DEAD = 12,
+         SPAN0 = 80,
+         MOD_LO = 485,
+         MOD_HI = 615 };
+  static int32_t pc, plo, phi, mlo, mhi, rest;
+  int32_t p = fm1_in.wheel[0], m = fm1_in.wheel[1], d, b, mw;
+  if (fm1_in.frames < 300u) { /* (~0.5 s: the readings settle) */
+    return;
+  }
+  if (!pc) {
+    pc = p;
+    plo = p - SPAN0;
+    phi = p + SPAN0;
+    mlo = m < MOD_LO ? m : MOD_LO;
+    mhi = m > MOD_HI ? m : MOD_HI;
+  }
+  plo = p < plo ? p : plo;
+  phi = p > phi ? p : phi;
+  mlo = m < mlo ? m : mlo;
+  mhi = m > mhi ? m : mhi;
+  d = p - pc;
+  if (d > -DEAD && d < DEAD) {
+    b = 0;
+    if (++rest > 200) { /* resting: the centre follows a slow drift */
+      pc += d > 0 ? 1 : d < 0 ? -1
+                              : 0;
+      rest = 0;
+    }
+  } else {
+    rest = 0;
+    b = d > 0 ? (d - DEAD) * 8191 / (phi - pc - DEAD > 1 ? phi - pc - DEAD : 1)
+              : (d + DEAD) * 8192 / (pc - plo - DEAD > 1 ? pc - plo - DEAD : 1);
+    b = b < -8192 ? -8192 : b > 8191 ? 8191
+                                     : b;
+  }
+  mw = mhi - m <= DEAD ? 0 : (mhi - m - DEAD) * 127 / (mhi - mlo - DEAD > 1 ? mhi - mlo - DEAD : 1);
+  wheel_bend = b;
+  wheel_mod = mw < 0 ? 0 : mw > 127 ? 127
+                                    : mw;
+}
 #else
 #define panel_buttons(b) (b)
 #define PANEL_ENC(e) (e)
@@ -277,6 +326,9 @@ static void input_snapshot(void) {
   for (e = 0; e < ENC_COUNT; e++) {
     in_enc[e] = fm1_enc_take(PANEL_ENC(e));
   }
+#if FOMA_SMK37
+  wheels();
+#endif
 }
 uint32_t keys(void) { return in_keys; }
 int key_held(int k) { return (unsigned)k < KEY_COUNT && (in_keys >> k & 1u); }
@@ -289,20 +341,35 @@ int button_released(int b) { return (unsigned)b < BTN_COUNT && (in_br >> b & 1u)
 int32_t encoder(int e) { return (unsigned)e < ENC_COUNT ? in_enc[e] : 0; }
 uint32_t master_knob(void) { return in_master; }
 #if FOMA_SMK37
-static uint8_t pad_lit[SMK_NPAD], pad_glow;
+int key_velocity(int k) {
+  int v = (unsigned)k < KEY_COUNT ? fm1_in.key_vel[SMK_KEY_F3 + (uint32_t)k] : 0;
+  return v ? v : 100;
+}
+int pitch_wheel(void) { return (int)wheel_bend; }
+int mod_wheel(void) { return (int)wheel_mod; }
+int fader(int i) { /* (-1 until the readings settle: a fader read too soon would look moved) */
+  return (unsigned)i < FADER_COUNT && fm1_in.frames >= 300u ? fm1_in.fader[i] : -1;
+}
+static uint16_t pad_color[SMK_NPAD];
+static uint8_t pad_glow;
 static void pad_show(uint32_t p) {
   static const uint8_t GLOW[3] = {0, 2, 6}; /* led_backlight: the unlit pads */
-  uint8_t v = pad_lit[p] ? 48u : GLOW[pad_glow];
-  padled_set(p, v, v, v);
+  uint32_t c = pad_color[p];
+  if (!c) {
+    padled_set(p, GLOW[pad_glow], GLOW[pad_glow], GLOW[pad_glow]);
+  } else { /* RGB565 -> 0..63 a channel: full WS2812 brightness is blinding */
+    padled_set(p, (uint8_t)((c >> 11) << 1), (uint8_t)((c >> 5 & 63u)), (uint8_t)((c & 31u) << 1));
+  }
 }
-void led_key(int k, int on) {
+void led_key_color(int k, uint16_t color) {
   for (uint32_t p = 0; p < SMK_NPAD; p++) { /* a white key's pad; the black keys have none */
     if (SMK_WHITE_NOTE[p] == (uint32_t)k) {
-      pad_lit[p] = on != 0;
+      pad_color[p] = color;
       pad_show(p);
     }
   }
 }
+void led_key(int k, int on) { led_key_color(k, on ? RGB(192, 192, 192) : 0); }
 void led_button(int b, int on) {
   if ((unsigned)b < BTN_COUNT) {
     fm1_led_key(SMK_BTN_OF[b], on);
@@ -316,13 +383,24 @@ void led_backlight(int level) {
   }
 }
 #else
+int key_velocity(int k) {
+  (void)k;
+  return 100;
+}
+int pitch_wheel(void) { return 0; }
+int mod_wheel(void) { return 0; }
+int fader(int i) {
+  (void)i;
+  return -1;
+}
 void led_key(int k, int on) {
   if ((unsigned)k < KEY_COUNT) {
     fm1_led_key(14u + (uint32_t)k, on);
   }
 }
+void led_key_color(int k, uint16_t color) { led_key(k, color != 0); }
 void led_button(int b, int on) {
-  if ((unsigned)b < BTN_COUNT) {
+  if ((unsigned)b < FM1_BUTTONS) { /* (ids above are the note keys' LEDs) */
     fm1_led_key((uint32_t)b, on);
   }
 }

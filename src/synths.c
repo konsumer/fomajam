@@ -300,6 +300,19 @@ static int32_t env_tick(const track_t *T, voice_t *v) {
   return v->env >> 9;
 }
 
+/* the wheels (main.c): a track's pitch bend in 1/16 semitones and its vibrato depth 0..127 (up to half a semitone,
+ * at 5.5 Hz). Written by loop(), read by the sound */
+static volatile int16_t bend16[TRACKS];
+static volatile uint8_t vib[TRACKS];
+static uint32_t vib_ph[TRACKS];
+#define VIB_INC 535693u /* 5.5 Hz a frame: 5.5 * 2^32 / 44100 */
+void synths_bend(int t, int bend, int depth) {
+  if ((unsigned)t < TRACKS) {
+    bend16[t] = (int16_t)clamp(bend, -1024, 1024);
+    vib[t] = (uint8_t)clamp(depth, 0, 127);
+  }
+}
+
 void synths_render(int t, int32_t *out, uint32_t n) {
   const song_track_t *s = &song.track[t];
   int e = machine_engine(s->machine);
@@ -322,7 +335,11 @@ void synths_render(int t, int32_t *out, uint32_t n) {
     return;
   }
   const engine_t *E = ENGINES[e];
-  int32_t buf[CTL], tune = (s->tune - 64) * 12 / 64 * 16;
+  int32_t buf[CTL], tune = (s->tune - 64) * 12 / 64 * 16 + bend16[t];
+  if (vib[t]) {
+    vib_ph[t] += VIB_INC * n;
+    tune += sine(vib_ph[t]) * vib[t] >> 19;
+  }
   params(T, s);
   if (E->block) {
     E->block(T);

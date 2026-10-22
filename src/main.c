@@ -1453,9 +1453,9 @@ static void keys_play(void) {
       if (is_synth(track)) {
         held[k] = (uint8_t)(base + k); /* a key stops the note it started, whatever the octave or track is now */
         held_t[k] = (uint8_t)track;
-        play(track, held[k], 100);
+        play(track, held[k], key_velocity(k)); /* (the FM-1's keys: 100) */
       } else if (key_voice(track, k) >= 0) {
-        play(track, key_voice(track, k), 100);
+        play(track, key_voice(track, k), key_velocity(k));
       }
     }
     if (key_released(k) && held[k]) {
@@ -1903,6 +1903,66 @@ void setup(void) {
   draw_all();
 }
 
+/* ---- the SMK-37's wheels: pitch bend (+-2 semitones) and vibrato on the track chosen; a MIDI track gets them as pitch
+ * bend and CC 1 on its channel. A track left goes back to rest. (On the FM-1 they stay at rest: nothing happens) */
+static void wheels(void) {
+  static int bend_was, mod_was, track_was = -1;
+  int b = pitch_wheel(), m = mod_wheel();
+  if (track != track_was) {
+    if (track_was >= 0 && (bend_was || mod_was)) {
+      synths_bend(track_was, 0, 0);
+      if (is_midi(track_was)) {
+        int ch = song.track[track_was].mch & 15;
+        midi_out(0xE0 | ch, 0, 64);
+        midi_out(0xB0 | ch, 1, 0);
+      }
+    }
+    track_was = track;
+    bend_was = mod_was = 0;
+  }
+  if (b == bend_was && m == mod_was) {
+    return;
+  }
+  if (is_synth(track)) {
+    synths_bend(track, b * 32 / 8192, m);
+  } else if (is_midi(track)) {
+    int ch = song.track[track].mch & 15;
+    if (b != bend_was) {
+      midi_out(0xE0 | ch, (b + 8192) & 127, (b + 8192) >> 7);
+    }
+    if (m != mod_was) {
+      midi_out(0xB0 | ch, 1, m);
+    }
+  }
+  bend_was = b;
+  mod_was = m;
+}
+
+/* ---- the SMK-37's faders: the levels of four tracks, FADER BANK picks which (1-4, 5-8, 9). A fader takes over only
+ * once it moves (also after a bank change), so nothing jumps. (The FM-1 has none) */
+#define FBANKS ((TRACKS + FADER_COUNT - 1) / FADER_COUNT)
+static int fbank;
+static void faders(void) {
+  static int last[FADER_COUNT] = {-1, -1, -1, -1}, bank_was;
+  if (fbank != bank_was) {
+    bank_was = fbank;
+    for (int i = 0; i < FADER_COUNT; i++) {
+      last[i] = -1;
+    }
+  }
+  for (int i = 0; i < FADER_COUNT; i++) {
+    int v = fader(i), t = fbank * FADER_COUNT + i;
+    if (v < 0 || v == last[i]) {
+      continue;
+    }
+    int moved = last[i] >= 0;
+    last[i] = v;
+    if (moved && t < TRACKS) {
+      cc_in(0, t, 7, v); /* as CC 7 does: the track's LEVEL, shown where it shows */
+    }
+  }
+}
+
 /* ---- the LEDs */
 static void leds(void) {
   pattern_t *p = pat();
@@ -1911,16 +1971,25 @@ static void leds(void) {
     steps |= (uint16_t)((p->flag[track][s] & STEP_ON) << s);
   }
   uint32_t held = keys();
-  for (int k = 0; k < KEY_COUNT; k++) {
+  for (int k = 0; k < KEY_COUNT; k++) { /* (the SMK-37's pads show the white keys in these colors; the FM-1: on / off) */
     int w = white_of[k], b = black_of[k], on;
+    uint16_t c = th->track[track];
     if (keys_edit()) {
       on = b >= 0           ? b == track
            : page == PG_MIX ? (w < TRACKS && !(song.mute >> w & 1))
                             : w < song.length && ((steps >> w & 1) ^ (w == play_step));
+      if (b < 0 && page == PG_MIX) {
+        c = w < TRACKS ? th->track[w] : 0;
+      } else if (FOMA_SMK37 && b < 0 && w == play_step) {
+        c = WHITE; /* the playhead, in white (the FM-1's: it flips the step's LED) */
+        on = 1;
+      } else if (b < 0 && w < STEPS) {
+        c = voice_color(track, p->val[track][w]);
+      }
     } else {
       on = held >> k & 1;
     }
-    led_key(k, on);
+    led_key_color(k, on ? (c ? c : WHITE) : 0);
   }
   for (int i = 0; i < PAGES; i++) {
     led_button(PAGE_BTN[i], PAGE_BTN[i] == PAGE_BTN[page]);
@@ -1933,6 +2002,8 @@ static void leds(void) {
   led_button(BTN_SAVE, dirty);
   led_button(BTN_OCT_DOWN, ask_until ? 1 : octave < 0); /* both lit: they answer */
   led_button(BTN_OCT_UP, ask_until ? 1 : octave > 0);
+  led_button(BTN_KNOB_BANK, subpages() > 1);
+  led_button(BTN_FADER_BANK, fbank != 0);
   led_backlight(song.lights);
 }
 
@@ -2004,7 +2075,7 @@ void loop(void) {
     changed(P_STSLIDE);
     toast(v ? "SLIDE ON" : "SLIDE OFF");
   }
-  if (button_pressed(BTN_SEL) && subpages() > 1) {
+  if ((button_pressed(BTN_SEL) || button_pressed(BTN_KNOB_BANK)) && subpages() > 1) { /* KNOB BANK: the SMK-37's */
     sub = (sub + 1) % subpages();
     draw_knobs();
     if (page == PG_SOUND) {
@@ -2018,6 +2089,12 @@ void loop(void) {
   if (button_pressed(BTN_PLAY)) {
     set_playing(!playing);
   }
+  if (button_pressed(BTN_FADER_BANK)) { /* the SMK-37's own buttons */
+    static const char *const BANK[FBANKS] = {"FADERS 1-4", "FADERS 5-8", "FADER 9"};
+    fbank = (fbank + 1) % FBANKS;
+    toast(BANK[fbank]);
+  }
+  pick_pattern(button_pressed(BTN_RIGHT) - button_pressed(BTN_LEFT)); /* < >: the pattern before, after */
   if (button_pressed(BTN_REC)) {
     rec = !rec;
     toast(rec ? "REC ON" : "REC OFF");
@@ -2062,6 +2139,8 @@ void loop(void) {
     keys_play();
   }
   midi_in();
+  wheels();
+  faders();
   if (page == PG_SCOPE) {
     draw_scope(0);
   } else if (page == PG_MIDI) {
