@@ -362,3 +362,19 @@ pre {
 .console .err {
   color: var(--bad);
 }
+#tab-songs label {
+  display: block;
+  margin: 4px 0;
+}
+.setups {
+  list-style: none;
+  padding: 0 !important;
+}
+.setups li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}

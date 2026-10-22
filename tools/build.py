@@ -178,6 +178,7 @@ def build_wasm(cfg):
       *INCLUDES,
       f'-DAPP_NAME="{cfg["name"]}"',
       f'-DAPP_VER="{cfg["version"]}"',
+      f'-DFELUCCA_ID="{cfg["product"]}"',
       *cfg["defines"],
       "-Wl,--no-entry",
       "-Wl,-z,stack-size=1048576",

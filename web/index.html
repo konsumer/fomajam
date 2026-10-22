@@ -15,6 +15,7 @@
       </div>
       <nav>
         <a href="#emulator" data-tab="emulator">Emulator</a>
+        <a href="#songs" data-tab="songs">Songs</a>
         <a href="#install" data-tab="install">Install</a>
         <a href="#rescue" data-tab="rescue">Rescue</a>
       </nav>
@@ -42,7 +43,7 @@
         </div>
         <div class="toolbar">
           <button id="reset">Restart</button>
-          <button id="wipe">Forget settings</button>
+          <button id="wipe">Forget song and samples</button>
           <label
             >MIDI in
             <select id="midiin">
@@ -58,6 +59,36 @@
           <span id="clock" class="dim mono"></span>
         </div>
         <pre id="console" class="console" aria-live="polite"></pre>
+      </section>
+
+      <!-- ---------------------------------------------------------------- songs -->
+      <section id="tab-songs" class="tab" hidden>
+        <h1>Songs</h1>
+        <p>Keep a setup for each song you play, and load it before you play it: the song (the patterns, the sounds, the effects and the settings, everything <strong>SAVE</strong> keeps) and up to four kits of your own samples. The same way <a href="https://github.com/konsumer/fm1buddy" target="_blank" rel="noopener">fm1buddy</a> does it without a computer.</p>
+        <div class="card">
+          <h2 id="songdevname">The FM-1</h2>
+          <p class="dim">Connect it to this computer with a USB data cable, and use Chrome or Edge.</p>
+          <p><button id="songcheck">Check</button></p>
+          <p id="songdevinfo" class="dim"></p>
+        </div>
+        <div class="card">
+          <h2>Setups</h2>
+          <p class="dim">A setup is a folder: <code>fomajam.bin</code> (the song), and its kits, as <code>.wav</code> files in <code>kits/</code> or as they were saved (<code>fomajam-kits.bin</code>). fm1buddy keeps them on its SD card the same way (<code>/setups</code>): choose that folder on the card, or any folder. <strong>Export</strong> writes a setup's patterns as MIDI files (<code>midi/</code>, for a DAW or another sequencer) and its kits as <code>.wav</code> files (<code>kits/</code>, for other samplers, or to change them).</p>
+          <p><button id="songfolder">Choose a folder</button> <button id="songsave" class="primary">Save</button></p>
+          <p id="songsaveinfo" class="dim">Save keeps its song and kits as a new setup in the folder (or as files, when no folder is chosen).</p>
+          <ul id="setuplist" class="setups"></ul>
+          <p>Or a song's file: <input type="file" id="songfile" accept=".bin" /> <span id="songloadslot"></span></p>
+        </div>
+        <div class="card">
+          <h2>Kits</h2>
+          <p class="dim">A kit is a folder of <code>.wav</code> files, and its name is the machine's name (after MIDI on the MACHINE knob). Name the files after drum voices (<code>bd.wav</code>, <code>sd.wav</code>, <code>ch.wav</code>, <code>oh.wav</code>, <code>cp.wav</code> ...) and it is a drum kit, played as the others; otherwise each file is a key. Up to four kits, 288 KiB in all (about 25 seconds).</p>
+          <button id="kitsfolder">Load kits from a folder</button>
+          <span class="dim">Each folder in it is a kit (or the folder is one, with its own .wav files). They replace the kits it has.</span>
+        </div>
+        <div class="progress" id="songprogress" hidden>
+          <progress id="songbar" max="100" value="0"></progress>
+          <p id="songstatus"></p>
+        </div>
       </section>
 
       <!-- ---------------------------------------------------------------- install -->

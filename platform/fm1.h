@@ -177,6 +177,36 @@ const int32_t *audio_in(void);
 int settings_load(void *p, uint32_t n); /* 0: loaded; else p is untouched */
 int settings_save(const void *p, uint32_t n);
 
+/* ---- sharing: a helper on USB (fm1buddy) keeps what the app gives it on its SD card and brings it back later, as one
+ * block of up to SHARE_MAX bytes (the settings, say). The app supplies these two; without them there's nothing to share.
+ * Both are called between passes of loop(). See platform/src/share.c for how they travel
+ *   share_get(&n)    what to keep: the bytes, and how many
+ *   share_put(p, n)  take these back (share_get's, maybe from an older version of the app): SHARE_OK or why not */
+#define SHARE_MAX SETTINGS_MAX
+enum { SHARE_OK,
+       SHARE_BUSY,       /* not now (it's playing) */
+       SHARE_BAD,        /* not something it knows */
+       SHARE_INCOMPLETE, /* (the platform's: not all of it came, or it came wrong) */
+       SHARE_FAILED };   /* taken, but saving it didn't work */
+const void *share_get(uint32_t *n);
+int share_put(const void *p, uint32_t n);
+
+/* ---- the store: flash a helper fills with what's too big for the settings (fomajam: its samples), as block 1 of
+ * sharing. The app reads it as memory (the audio too: it's in the flash the code runs from). FM-1 and the emulator:
+ * STORE_MAX is 288 KiB; SMK-37: 100 KiB. Rewriting it stalls the sound (~50 ms a 4 KiB sector)
+ *   store_data(&n)  what's in it, as the helper wrote it (and checked): 0 (n 0) when nothing is
+ * The app may supply these two:
+ *   store_begin()   it's about to be rewritten: stop reading it. SHARE_OK, or SHARE_BUSY (not now: it's playing)
+ *   store_done()    it was (store_data has what's new, or nothing if it didn't finish) */
+#if FOMA_SMK37
+#define STORE_MAX (100u * 1024u)
+#else
+#define STORE_MAX (288u * 1024u)
+#endif
+const uint8_t *store_data(uint32_t *n);
+int store_begin(void);
+void store_done(void);
+
 /* ---- helpers for sound without floats */
 int32_t sine(uint32_t phase);          /* a full cycle over 2^32 -> -32767..32767 */
 uint32_t note_inc(int note);           /* phase step per frame of a MIDI note (0..127) at SAMPLE_RATE */

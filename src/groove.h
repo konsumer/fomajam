@@ -89,7 +89,11 @@ void live_off(int t, int v);         /* let a synth note go */
 void midi_out(int status, int d1, int d2); /* a message out over USB MIDI, sent by audio() (in order with the notes) */
 
 /* ---- the machines: the modeled drums, the ROM drums, SMP (samples/) if there are any, the synth engines */
+#define USER_KITS 4 /* the store's kits (fm1buddy's or the page's): machines after MIDI, named as they're made */
+#define USER_MAX 27 /* samples in one, at most: one a key */
 int machine_count(void);
+int machine_kit(int m);   /* 1: a drum kit (the 22 voices, BD SD ...); else one voice a key (SMP, a kit so made) or notes */
+int machine_empty(int m); /* 1: a store kit's slot with nothing in it (the knob passes it by) */
 const char *machine_name(int m);
 int machine_find(const char *name, int otherwise);
 int machine_synth(int m);      /* 1: a synth engine (its voices are notes) */
@@ -127,6 +131,8 @@ void synths_off(int t, int note);
 void synths_bend(int t, int bend, int depth); /* the wheels: bend in 1/16 semitones, vibrato depth 0..127 */
 void synths_render(int t, int32_t *out, uint32_t n); /* track t, at its level; n: CTL (32) frames */
 void synths_stop(void);
+void drums_store(void);   /* the store's bank (fm1.h) is the kits after MIDI: at power-on, and when it was rewritten */
+void drums_unstore(void); /* it's about to be rewritten: they go quiet */
 void drums_hit(int t, int v, int vel);
 void drums_render(int t, int32_t *out, uint32_t n); /* track t's drums, at its level */
 

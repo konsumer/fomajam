@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The page: the emulator (firmware.wasm in worklet.js), the installer and the rescue (fm1ota.js).
+// The page: the emulator (firmware.wasm in worklet.js), songs (fm1share.js), the installer and the rescue (fm1ota.js).
 import { productOf, logicalImage } from './fm1pkg.js'
 import { Updater } from './fm1ota.js'
+import { info as shareInfo, readBlock, writeBlock, SONG, SAMPLES } from './fm1share.js'
+import { kit, build as buildBank, describe, unpack } from './fm1bank.js'
+import { songMidi } from './fm1song.js'
 
 const $ = (id) => document.getElementById(id)
 const DEV = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)
@@ -322,6 +325,28 @@ function saveStore(bytes) {
     localStorage.setItem(storeKey, btoa(String.fromCharCode(...bytes)))
   } catch {}
 }
+// the emulator's store (its samples): the data and its record, kept as the settings are
+const b64 = (bytes) => {
+  let s = ''
+  for (let i = 0; i < bytes.length; i += 8192) s += String.fromCharCode(...bytes.subarray(i, i + 8192))
+  return btoa(s)
+}
+const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0))
+function loadFlash() {
+  try {
+    const s = JSON.parse(localStorage.getItem(storeKey.replace('settings', 'store')))
+    return s ? { data: unb64(s.data), record: unb64(s.record) } : null
+  } catch {
+    return null
+  }
+}
+function saveFlash(f) {
+  try {
+    localStorage.setItem(storeKey.replace('settings', 'store'), JSON.stringify({ data: b64(f.data), record: b64(f.record) }))
+  } catch {
+    say('the samples are too big to keep for the next visit (they stay until the page closes)', true)
+  }
+}
 
 function drawScreen(fb) {
   const d = img.data
@@ -341,6 +366,7 @@ function onFrame(m) {
   buttons.forEach((el, i) => el.classList.toggle('lit', !!(m.buttons & (1 << i))))
   for (const el of [...keys, ...buttons]) el.dataset.backlight = m.backlight || 0
   if (m.store) saveStore(m.store)
+  if (m.flash) saveFlash(m.flash)
   if (m.log) for (const l of m.log.replace(/\n$/, '').split('\n')) say(l)
   if (m.midi && midiOut) for (const p of m.midi) midiOut.send(midiBytes(p))
   const s = Math.floor(m.ms / 1000)
@@ -357,7 +383,7 @@ async function reload() {
   latched = keyMask = btnMask = 0
   syncKeys()
   syncButtons()
-  node.port.postMessage({ type: 'load', wasm, store: loadStore(), master }, [wasm])
+  node.port.postMessage({ type: 'load', wasm, store: loadStore(), flash: loadFlash(), master }, [wasm])
 }
 
 $('power').addEventListener('click', async () => {
@@ -371,6 +397,7 @@ $('power').addEventListener('click', async () => {
       const m = e.data
       if (m.type === 'frame') onFrame(m)
       else if (m.type === 'ready') say(`— ${build ? build.name + ' ' + build.version : 'firmware'} started —`)
+      else if (m.type === 'sysex') emuLink.push(m.data)
       else if (m.type === 'crash') say(`crashed: ${m.message} (the FM-1 would show its red crash screen and restart)`, true)
     }
     await audioCtx.resume()
@@ -385,6 +412,7 @@ $('reset').addEventListener('click', () => reload())
 $('wipe').addEventListener('click', () => {
   try {
     localStorage.removeItem(storeKey)
+    localStorage.removeItem(storeKey.replace('settings', 'store'))
   } catch {}
   reload()
 })
@@ -593,3 +621,309 @@ $('check').addEventListener('click', async () => {
   }
   setBusy(false)
 })
+
+// ---------------------------------------------------------------- songs (fm1share.js)
+// the emulator as a link (fm1share.js): SysEx through the worklet, as the FM-1's over USB
+const emuLink = {
+  q: [],
+  waiter: null,
+  send(bytes) {
+    if (!node) return false
+    node.port.postMessage({ type: 'sysex', data: Uint8Array.from(bytes) })
+    return true
+  },
+  drain() {
+    this.q.length = 0
+  },
+  push(data) {
+    for (let s = 0; s < data.length;) {
+      const e = data.indexOf(0xf7, s)
+      if (e < 0) break
+      this.q.push(Array.from(data.subarray(s, e + 1)))
+      s = e + 1
+    }
+    if (this.waiter) this.waiter()
+  },
+  async read(ms) {
+    if (!this.q.length) {
+      let tm
+      await new Promise((r) => {
+        this.waiter = r
+        tm = setTimeout(r, ms)
+      })
+      clearTimeout(tm)
+      this.waiter = null
+    }
+    return this.q.shift() || null
+  }
+}
+
+const SONG_TEXT = {
+  off: 'The emulator is off: switch it on in the Emulator tab.',
+  none: 'It does not share its song: an older fomajam, or another firmware.',
+  gone: 'It stopped answering. Check the cable and try again.',
+  big: 'The kits are too big for it: shorter samples, or fewer.',
+  busy: 'It is playing: stop it, then load again.',
+  bad: 'It did not take it: not something this version knows.',
+  incomplete: 'Not all of it got there: try again.',
+  failed: 'It took it, but could not save it.',
+  unsaid: 'It did not say if it took it: look at its screen.'
+}
+// what a setup holds, named as fm1buddy names them: the song, the kits as the FM-1 had them, the kits' .wav files
+const app = () => (build ? build.name : 'FOMAJAM').toLowerCase().replace(/[^a-z0-9]/g, '-')
+const songFile = () => `${app()}.bin`
+const kitsFile = () => `${app()}-kits.bin`
+const KITS_DIR = 'kits'
+const MIDI_DIR = 'midi'
+let setupsDir = null
+let songBytes = null // the file chosen
+let songBusy = false
+
+// the FM-1; the emulator instead with ?emu in the address (for trying it without one, and for tests)
+const songEmu = new URLSearchParams(location.search).has('emu')
+const songTarget = () => (songEmu ? 'emu' : 'fm1')
+if (songEmu) {
+  $('songdevname').textContent = 'The emulator'
+  $('songdevname').nextElementSibling.textContent = 'Switch it on in the Emulator tab. (Without ?emu in the address, this tab talks to the FM-1.)'
+}
+function songStatus(text, pct) {
+  $('songprogress').hidden = false
+  $('songstatus').textContent = text
+  if (pct !== undefined) $('songbar').value = pct
+}
+function songSetBusy(b) {
+  songBusy = b
+  for (const id of ['songcheck', 'songsave', 'songfolder', 'kitsfolder']) $(id).disabled = b
+  $('songload').disabled = b || !songBytes
+  for (const el of document.querySelectorAll('#setuplist button')) el.disabled = b
+}
+const kitsText = (bank) => {
+  const kits = bank && describe(bank)
+  return kits && kits.length ? kits.map((k) => `${k.name} (${k.drum ? 'a drum kit' : `${k.samples.length} sample${k.samples.length > 1 ? 's' : ''}`})`).join(', ') : 'none'
+}
+
+// the link to the one chosen: { link, close() }
+async function songLink() {
+  if (songTarget() === 'emu') {
+    if (!node) throw Object.assign(new Error('off'), { code: 'off' })
+    return { link: emuLink, close() {} }
+  }
+  const dev = await new Updater(await midiSysex()).find()
+  if (!dev) throw Object.assign(new Error('notfound'), { code: 'notfound' })
+  return { link: dev.link, close: () => dev.link.close() }
+}
+
+async function songJob(fn) {
+  songSetBusy(true)
+  let l = null
+  try {
+    l = await songLink()
+    await fn(l.link)
+  } catch (e) {
+    songStatus(SONG_TEXT[e.code] || TEXT[e.code] || `Error: ${e.message}`)
+  }
+  if (l) l.close()
+  songSetBusy(false)
+}
+
+$('songcheck').addEventListener('click', () =>
+  songJob(async (link) => {
+    const i = await shareInfo(link)
+    if (!i) return ($('songdevinfo').textContent = SONG_TEXT.none)
+    const k = await shareInfo(link, SAMPLES)
+    const bank = k && k.size ? await readBlock(link, SAMPLES) : null
+    $('songdevinfo').textContent = `${i.name} ${i.version}: shares its song (${i.size} bytes)${k ? `, and its kits: ${kitsText(bank)} (${Math.round(k.size / 1024)} of ${k.max / 1024} KiB)` : ''}.`
+  })
+)
+
+async function writeFile(dir, name, data) {
+  const w = await (await dir.getFileHandle(name, { create: true })).createWritable()
+  await w.write(data)
+  await w.close()
+}
+
+$('songsave').addEventListener('click', () =>
+  songJob(async (link) => {
+    songStatus('Getting its song', 0)
+    const data = await readBlock(link, SONG, (d, t) => songStatus('Getting its song', (100 * d) / t))
+    const k = await shareInfo(link, SAMPLES)
+    const bank = k && k.size ? await readBlock(link, SAMPLES, (d, t) => songStatus('Getting its kits', (100 * d) / t)) : null
+    if (setupsDir) {
+      let n = 1
+      const names = new Set()
+      for await (const [name] of setupsDir.entries()) names.add(name)
+      while (names.has(`setup-${n}`)) n++
+      const dir = await setupsDir.getDirectoryHandle(`setup-${n}`, { create: true })
+      await writeFile(dir, songFile(), data)
+      if (bank) await writeFile(dir, kitsFile(), bank)
+      songStatus(`Saved as setup-${n}${bank ? ', with its kits' : ''} (rename the folder to the song's name if you like).`, 100)
+      await listSetups()
+    } else {
+      for (const [name, bytes] of [[songFile(), data], ...(bank ? [[kitsFile(), bank]] : [])]) {
+        const a = document.createElement('a')
+        a.href = URL.createObjectURL(new Blob([bytes]))
+        a.download = name
+        a.click()
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+      }
+      songStatus(`Saved as ${songFile()}${bank ? ` and ${kitsFile()}` : ''} (your downloads).`, 100)
+    }
+  })
+)
+
+// kits from a folder: each folder in it a kit; or, with .wav files of its own, the folder is one
+async function kitsFrom(dir) {
+  const read = async (d) => {
+    const files = []
+    for await (const [name, h] of d.entries()) if (h.kind === 'file' && /\.wav$/i.test(name)) files.push({ name, bytes: new Uint8Array(await (await h.getFile()).arrayBuffer()) })
+    return files
+  }
+  const own = await read(dir)
+  if (own.length) return [kit(dir.name, own)]
+  const kits = []
+  const subs = []
+  for await (const [name, h] of dir.entries()) if (h.kind === 'directory') subs.push([name, h])
+  subs.sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }))
+  for (const [name, h] of subs) {
+    const files = await read(h)
+    if (files.length) kits.push(kit(name, files))
+  }
+  if (!kits.length) throw new Error(`no .wav files in ${dir.name} (or in folders in it)`)
+  return kits
+}
+
+// a setup to it: its kits first (made from kits/, else as they were kept), then its song
+async function loadSetup(link, { song, bank, kitsDir }) {
+  if (kitsDir) {
+    songStatus('Making the kits', 0)
+    bank = buildBank(await kitsFrom(kitsDir))
+  }
+  if (bank) {
+    songStatus(`Loading the kits: ${kitsText(bank)}`, 0)
+    await writeBlock(link, SAMPLES, bank, (d, t) => songStatus(`Loading the kits: ${kitsText(bank)}`, (100 * d) / t))
+  }
+  if (song) {
+    songStatus('Loading the song', 0)
+    await writeBlock(link, SONG, song, (d, t) => songStatus('Loading the song', (100 * d) / t))
+  }
+  songStatus(`Loaded${bank ? `, with the kits ${kitsText(bank)}` : ''}: it is saved on it.`, 100)
+}
+
+// a button whose first click only asks "Sure?"
+function sureButton(label, sure, fn) {
+  const b = document.createElement('button')
+  b.textContent = label
+  b.addEventListener('click', () => {
+    if (b.dataset.sure !== '1') {
+      b.dataset.sure = '1'
+      b.textContent = sure
+      return
+    }
+    b.dataset.sure = ''
+    b.textContent = label
+    songJob(fn)
+  })
+  return b
+}
+
+const fileBytes = async (h) => new Uint8Array(await (await h.getFile()).arrayBuffer())
+
+async function listSetups() {
+  const ul = $('setuplist')
+  ul.textContent = ''
+  if (!setupsDir) return
+  const rows = []
+  for await (const [name, h] of setupsDir.entries()) {
+    if (h.kind !== 'directory') continue
+    const r = { name, song: null, bank: null, kitsDir: null }
+    for await (const [n, f] of h.entries()) {
+      if (n === songFile() && f.kind === 'file') r.song = f
+      else if (n === kitsFile() && f.kind === 'file') r.bank = f
+      else if (n === KITS_DIR && f.kind === 'directory') r.kitsDir = f
+    }
+    if (r.song || r.bank || r.kitsDir) rows.push(r)
+  }
+  rows.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+  for (const r of rows) {
+    const li = document.createElement('li')
+    const span = document.createElement('span')
+    span.textContent = r.name
+    const has = [r.song && 'song', r.kitsDir ? 'kits (.wav)' : r.bank && 'kits'].filter(Boolean).join(', ')
+    const dim = document.createElement('span')
+    dim.className = 'dim'
+    dim.textContent = ` ${has}`
+    span.append(dim)
+    const exp = document.createElement('button')
+    exp.textContent = 'Export'
+    exp.title = `its patterns as MIDI files (${MIDI_DIR}/), and its kits as .wav files (${KITS_DIR}/)`
+    exp.addEventListener('click', () => exportSetup(r))
+    li.append(
+      span,
+      exp,
+      sureButton('Load', 'Sure? It replaces what it has', async (link) => loadSetup(link, { song: r.song && (await fileBytes(r.song)), bank: !r.kitsDir && r.bank && (await fileBytes(r.bank)), kitsDir: r.kitsDir }))
+    )
+    ul.append(li)
+  }
+  if (!rows.length) ul.innerHTML = `<li class="dim">No setups in this folder yet.</li>`
+  songSetBusy(songBusy)
+}
+
+// for other gear: a setup's patterns as MIDI files in midi/, and its kits (as saved) as .wav files in kits/
+async function exportSetup(r) {
+  songSetBusy(true)
+  try {
+    const done = []
+    const dir = await setupsDir.getDirectoryHandle(r.name)
+    if (r.song) {
+      const mids = songMidi(await fileBytes(r.song))
+      const md = await dir.getDirectoryHandle(MIDI_DIR, { create: true })
+      for (const m of mids) await writeFile(md, m.name, m.bytes)
+      done.push(`${mids.length} pattern${mids.length === 1 ? '' : 's'} as MIDI files in ${MIDI_DIR}/`)
+    }
+    if (r.bank && !r.kitsDir) {
+      const kd = await dir.getDirectoryHandle(KITS_DIR, { create: true })
+      const kits = unpack(await fileBytes(r.bank))
+      for (const k of kits) {
+        const d = await kd.getDirectoryHandle(k.name, { create: true })
+        for (const f of k.files) await writeFile(d, f.name, f.bytes)
+      }
+      done.push(`its kits as .wav files in ${KITS_DIR}/`)
+    }
+    songStatus(done.length ? `${r.name}: ${done.join(', and ')}.` : `${r.name}: nothing to export (its kits are .wav files already).`, 100)
+    await listSetups()
+  } catch (e) {
+    songStatus(`Error: ${e.message}`)
+  }
+  songSetBusy(false)
+}
+
+if (!window.showDirectoryPicker) {
+  $('songfolder').hidden = $('kitsfolder').hidden = true
+  $('songsaveinfo').textContent = 'Save keeps its song and kits as files (this browser cannot open folders: Chrome or Edge can).'
+}
+$('songfolder').addEventListener('click', async () => {
+  try {
+    setupsDir = await showDirectoryPicker({ id: 'setups', mode: 'readwrite' })
+    $('songfolder').textContent = `Folder: ${setupsDir.name}`
+    await listSetups()
+  } catch {}
+})
+$('kitsfolder').addEventListener('click', async () => {
+  let dir
+  try {
+    dir = await showDirectoryPicker({ id: 'kits', mode: 'read' })
+  } catch {
+    return
+  }
+  songJob(async (link) => loadSetup(link, { kitsDir: dir }))
+})
+
+const songLoad = sureButton('Load it', 'Sure? It replaces the song on it', async (link) => loadSetup(link, { song: songBytes }))
+songLoad.id = 'songload'
+$('songloadslot').append(songLoad)
+$('songfile').addEventListener('change', async (e) => {
+  const f = e.target.files[0]
+  songBytes = f ? new Uint8Array(await f.arrayBuffer()) : null
+  songSetBusy(songBusy)
+})
+songSetBusy(false)

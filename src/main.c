@@ -1352,6 +1352,12 @@ static void turn(int id, int e) {
   d = hi - lo > 20 ? accel(e, d) : d;
   int n = v + d < lo ? lo : v + d > hi ? hi
                                        : v + d;
+  if (id == P_MACHINE) { /* past the store's empty kit slots */
+    while (machine_empty(n) && n > lo && n < hi) {
+      n += d > 0 ? 1 : -1;
+    }
+    n = machine_empty(n) ? v : n;
+  }
   if (n != v) {
     pset(id, n);
     changed(id);
@@ -1396,7 +1402,7 @@ static int key_voice(int t, int k) {
   static const int8_t ON_WHITE[16] = {0, 2, 9, 10, 5, 4, 6, 7, 8, 11, 12, 13, 15, 20, 21, 19};
   static const int8_t ON_BLACK[11] = {1, 3, 14, 16, 17, 18, -1, -1, -1, -1, -1};
   int m = machine_of(t), v;
-  if (machine_voices(m) != 22) {
+  if (!machine_kit(m)) {
     return k < machine_voices(m) ? k : -1;
   }
   v = white_of[k] >= 0 ? ON_WHITE[white_of[k]] : ON_BLACK[black_of[k]];
@@ -1687,8 +1693,8 @@ static void midi_note(int t, int on, int off, int d1, int d2) {
     }
   } else if (on) {
     int v = d1 >= 35 && d1 <= 81 ? GM[d1 - 35] : -1;
-    if (machine_voices(machine_of(t)) != 22) {
-      v = d1 - 36; /* SMP: a sample a key from C */
+    if (!machine_kit(machine_of(t))) {
+      v = d1 - 36; /* SMP, USER: a sample a key from C */
     }
     if (v >= 0 && machine_has(machine_of(t), v)) {
       play(t, v, d2);
@@ -1856,7 +1862,8 @@ static void sanitize(void) {
   for (int p = 0; p < PATTERNS; p++) { /* a voice this machine has no number for: a rest */
     for (int t = 0; t < TRACKS; t++) {
       for (int s = 0; s < STEPS; s++) {
-        if (song.pat[p].val[t][s] >= machine_voices(machine_of(t))) {
+        /* (the store's kits come and go with what's loaded: their steps stay) */
+        if (song.pat[p].val[t][s] >= (machine_of(t) >= machine_count() - USER_KITS ? USER_MAX : machine_voices(machine_of(t)))) {
           song.pat[p].flag[t][s] = 0;
         }
       }
@@ -1864,14 +1871,9 @@ static void sanitize(void) {
   }
 }
 
-/* a version 7 or 6 song: its 8 patterns were before the effects (6 had none). 1: loaded */
-static int load_old(void) {
+/* a version 7 or 6 song, as it was in song: its 8 patterns were before the effects (6 had none) */
+static void old_layout(int v) {
   uint8_t *b = (uint8_t *)&song, fx[SONG_FX];
-  int v = !settings_load(&song, SONG7_SIZE) && song.version == 7 ? 7 : !settings_load(&song, SONG6_SIZE) && song.version == 6 ? 6
-                                                                                                                              : 0;
-  if (!v) {
-    return 0;
-  }
   for (uint32_t i = 0; i < SONG_FX; i++) {
     fx[i] = b[SONG6_SIZE + i];
   }
@@ -1889,7 +1891,16 @@ static int load_old(void) {
     song.lights = 0;
   }
   song.version = SONG_VERSION;
-  return 1;
+}
+
+/* a version 7 or 6 song from the settings. 1: loaded */
+static int load_old(void) {
+  int v = !settings_load(&song, SONG7_SIZE) && song.version == 7 ? 7 : !settings_load(&song, SONG6_SIZE) && song.version == 6 ? 6
+                                                                                                                              : 0;
+  if (v) {
+    old_layout(v);
+  }
+  return v != 0;
 }
 
 void setup(void) {
@@ -1898,6 +1909,7 @@ void setup(void) {
     white_of[k] = IS_BLACK[k % 12] ? -1 : (int8_t)w++;
     black_of[k] = IS_BLACK[k % 12] ? (int8_t)b++ : -1;
   }
+  drums_store(); /* (before the song: its USER steps) */
   if (settings_load(&song, sizeof song) || song.version != SONG_VERSION) {
     if (!settings_load(&song, SONG8_SIZE) && song.version == 8) { /* the same, without the MIDI in settings */
       song.version = SONG_VERSION;
@@ -1912,6 +1924,65 @@ void setup(void) {
   clock_setup();
   engine_tempo();
   draw_all();
+}
+
+/* ---- sharing (fm1.h): fm1buddy keeps songs on its SD card, and brings one back before a gig */
+const void *share_get(uint32_t *n) {
+  *n = sizeof song;
+  return &song;
+}
+
+/* the samples (the store, fm1.h): not while playing; USER is quiet while they change */
+int store_begin(void) {
+  if (playing) {
+    return SHARE_BUSY;
+  }
+  drums_unstore();
+  return SHARE_OK;
+}
+
+void store_done(void) {
+  uint32_t n;
+  drums_store();
+  draw_all();
+  toast(store_data(&n) ? "SAMPLES LOADED" : "NO SAMPLES");
+}
+
+/* a song of any version this one loads; it's then the song, and saved */
+int share_put(const void *p, uint32_t n) {
+  const uint8_t *b = p;
+  int v = n == sizeof song ? SONG_VERSION : n == SONG8_SIZE ? 8
+                                        : n == SONG7_SIZE   ? 7
+                                        : n == SONG6_SIZE   ? 6
+                                                            : 0;
+  if (playing) {
+    return SHARE_BUSY;
+  }
+  if (!v || b[0] != v) {
+    return SHARE_BAD;
+  }
+  for (uint32_t i = 0; i < n; i++) {
+    ((uint8_t *)&song)[i] = b[i];
+  }
+  if (v < 8) {
+    old_layout(v);
+  }
+  if (v < SONG_VERSION) {
+    song.version = SONG_VERSION;
+    midi_defaults();
+  }
+  sanitize();
+  clock_setup();
+  engine_tempo();
+  draw_all();
+  save_pending = 0;
+  dirty = 0;
+  if (settings_save(&song, sizeof song)) {
+    toast("SAVE FAILED");
+    return SHARE_FAILED;
+  }
+  toast("SONG LOADED");
+  return SHARE_OK;
 }
 
 /* ---- the SMK-37's wheels: pitch bend (+-2 semitones) and vibrato on the track chosen; a MIDI track gets them as pitch

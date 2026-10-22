@@ -2,7 +2,8 @@
 /* foma in the browser: the API of fm1.h over a simulated FM-1, compiled with your code to
  * WebAssembly (tools/build.py) and run in an AudioWorklet (web/worklet.js). Producing sound moves
  * the device's clock: one pass of loop() per millisecond, the audio callback every 256 frames, as
- * on the FM-1. The page sends the panel in and reads the screen, the LEDs, MIDI and the settings. */
+ * on the FM-1. The page sends the panel in and reads the screen, the LEDs, MIDI and the settings, and talks to it in
+ * the FM-1's SysEx (who it is, sharing: share.c) as a helper on USB would. */
 #include <stdint.h>
 
 #include "fm1.h"
@@ -194,6 +195,75 @@ int settings_save(const void *p, uint32_t n) {
   return 0;
 }
 
+/* ---- SysEx with a helper, as on the FM-1 (ota.c's frames: who it is, and sharing, share.c; never an update): the
+ * page hands in one whole message (F0..F7) at a time, and takes out what it answered */
+static uint8_t sx_in[640], sx_out[4096];
+static uint32_t sx_in_n, sx_out_n;
+static int ota_wire_send(const uint8_t *p, uint32_t n) {
+  if (sx_out_n + n > sizeof sx_out) {
+    return -1;
+  }
+  memcpy(sx_out + sx_out_n, p, n);
+  sx_out_n += n;
+  return 0;
+}
+static int ota_frame_get(const uint8_t **p, uint32_t *n) {
+  *p = sx_in + 1; /* between F0 and F7 */
+  *n = sx_in_n - 2;
+  return sx_in_n > 2;
+}
+static void ota_frame_done(void) { sx_in_n = 0; }
+static uint32_t ota_now_ms(void) { return now_ms; }
+static void ota_idle(void) {}
+static int ota_erase(uint32_t off) { return -1; }
+static int ota_prog(uint32_t off, const void *p, uint32_t n) { return -1; }
+static int ota_fread(uint32_t off, void *p, uint32_t n) { return -1; }
+static void ota_show(uint32_t step, int32_t code) {}
+static void ota_commit(const uint8_t *parm) {}
+static void share_frame(uint32_t cmd, const uint8_t *b, uint32_t n);
+#define OTA_MORE share_frame
+#include "ota.c"
+/* the store (fm1.h): flash here is memory, which the page keeps (as the settings) */
+static uint8_t flash[STORE_MAX + 4096u];
+static uint32_t flash_gen;
+static const uint8_t *store_mem(void) { return flash; }
+static int store_erase(uint32_t off) {
+  memset(flash + off, 0xFF, 4096u);
+  return 0;
+}
+static int store_prog(uint32_t off, const uint8_t *p, uint32_t n) {
+  for (uint32_t i = 0; i < n; i++) {
+    flash[off + i] &= p[i]; /* as flash: only clears bits */
+  }
+  if (off == STORE_MAX) {
+    flash_gen++; /* the record: it's done */
+  }
+  return 0;
+}
+#include "share.c"
+EXPORT(web_flash)
+uint8_t *web_flash(void) { return flash; }
+EXPORT(web_flash_len)
+uint32_t web_flash_len(void) { return sizeof flash; }
+EXPORT(web_flash_gen)
+uint32_t web_flash_gen(void) { return flash_gen; }
+EXPORT(web_sysex_buf)
+uint8_t *web_sysex_buf(void) { return sx_in; }
+EXPORT(web_sysex_in)
+int32_t web_sysex_in(uint32_t n) { /* 0: taken; -1: one is still waiting (the helper asks again, as with the FM-1) */
+  if (sx_in_n || n < 3 || n > sizeof sx_in || sx_in[0] != 0xF0 || sx_in[n - 1] != 0xF7) {
+    return -1;
+  }
+  sx_in_n = n;
+  return 0;
+}
+EXPORT(web_sysex_out)
+uint8_t *web_sysex_out(void) { return sx_out; }
+EXPORT(web_sysex_out_len)
+uint32_t web_sysex_out_len(void) { return sx_out_n; }
+EXPORT(web_sysex_out_clear)
+void web_sysex_out_clear(void) { sx_out_n = 0; }
+
 /* ---- print: a text ring the page drains into its console */
 #define LOG 4096u
 static char log_buf[LOG];
@@ -227,6 +297,7 @@ static int32_t blk[2u * HALF_FRAMES];
 static void tick(void) {
   now_ms++;
   now_us += 1000u;
+  ota_service(); /* as the FM-1's main loop, between passes of loop() */
   input_snapshot();
   loop();
   screen_flush();
