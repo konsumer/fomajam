@@ -2,6 +2,7 @@
   "private": true,
   "scripts": {
     "fmt": "npx -y prettier -w \"web/*.{html,js,css}\" \"*.json\"",
-    "start": "npx -y live-server build/web"
+    "start": "npx -y live-server build/web",
+    "build": "./fm1 build"
   }
 }
