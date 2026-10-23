@@ -238,7 +238,7 @@ void synths_note(int t, int note, int vel, int slide, int32_t gate) {
     v->note = (uint8_t)note;
     v->pitch16 = note * 16;
     v->vel = (uint8_t)vel;
-    if (!slide) {
+    if (!slide && !(s->mono && s->slide)) { /* MONO with GLIDE above 0: every legato note glides */
       v->pitch_cur = v->pitch16;
     }
   } else {
