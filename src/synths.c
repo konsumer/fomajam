@@ -47,7 +47,7 @@ static track_t trk[NPART];
 #define ENG_MEM_PART 8600u
 #define ENG_MEM_FITS(name, size) _Static_assert((size) <= ENG_MEM_PART, name " state over ENG_MEM_PART")
 static uint8_t eng_mem[NPART][ENG_MEM_PART] POOL;
-#define ENG_MEM(p) ((void*)eng_mem[p])
+#define ENG_MEM(p) ((void *)eng_mem[p])
 static uint32_t rng(void) { return random32(); }
 
 #include "dsp.c"
@@ -62,19 +62,19 @@ static uint32_t rng(void) { return random32(); }
 #include "eng_string.h"
 #include "eng_supersaw.h"
 
-static const engine_t* const ENGINES[] = {&ENG_ANALOG, &ENG_LOFI, &ENG_TRIO, &ENG_WHEEL, &ENG_NOISE, &ENG_PHASE, &ENG_FORMANT, &ENG_PHYS, &ENG_STRING, &ENG_SUPERSAW};
-static const char* const LABEL[] = {"ANA", "LOF", "TRI", "WHL", "NOI", "PHS", "VOX", "PHY", "STR", "SSW"};
+static const engine_t *const ENGINES[] = {&ENG_ANALOG, &ENG_LOFI, &ENG_TRIO, &ENG_WHEEL, &ENG_NOISE, &ENG_PHASE, &ENG_FORMANT, &ENG_PHYS, &ENG_STRING, &ENG_SUPERSAW};
+static const char *const LABEL[] = {"ANA", "LOF", "TRI", "WHL", "NOI", "PHS", "VOX", "PHY", "STR", "SSW"};
 #define ENGINES_N ((int)NELEM(ENGINES))
 
 /* ---- for the screen */
 int synth_count(void) { return ENGINES_N; }
-const char* synth_name(int e) { return ENGINES[e]->name; }
-const char* synth_label(int e) { return LABEL[e]; }
-const char* synth_page(int e, int page) { return ENGINES[e]->page_title[page & 1]; }
+const char *synth_name(int e) { return ENGINES[e]->name; }
+const char *synth_label(int e) { return LABEL[e]; }
+const char *synth_page(int e, int page) { return ENGINES[e]->page_title[page & 1]; }
 int synth_presets(int e) { return ENGINES[e]->npresets; }
-const char* synth_preset_name(int e, int p) { return ENGINES[e]->presets[p].name; }
+const char *synth_preset_name(int e, int p) { return ENGINES[e]->presets[p].name; }
 
-static void params(track_t* T, const song_track_t* s) { /* song.track -> Felucca's p[] */
+static void params(track_t *T, const song_track_t *s) { /* song.track -> Felucca's p[] */
   for (int k = 0; k < 8; k++) {
     T->p[P_E0 + k] = s->e[k];
   }
@@ -86,10 +86,10 @@ static void params(track_t* T, const song_track_t* s) { /* song.track -> Felucca
   T->p[P_ROOT] = 0;
 }
 
-void synth_param(int t, int k, synth_param_t* out) {
+void synth_param(int t, int k, synth_param_t *out) {
   static track_t ui; /* an engine's parameter names can depend on its other parameters (its mode) */
-  const engine_t* E = ENGINES[machine_engine(song.track[t].machine)];
-  const param_desc_t* d = 0;
+  const engine_t *E = ENGINES[machine_engine(song.track[t].machine)];
+  const param_desc_t *d = 0;
   params(&ui, &song.track[t]);
   if (E->desc) {
     d = E->desc(&ui, (uint32_t)k);
@@ -108,12 +108,12 @@ void synth_param(int t, int k, synth_param_t* out) {
 }
 
 void synth_load(int t, int p) {
-  song_track_t* s = &song.track[t];
+  song_track_t *s = &song.track[t];
   int e = machine_engine(s->machine);
   if (e < 0 || p < 0 || p >= ENGINES[e]->npresets) {
     return;
   }
-  const preset_t* pr = &ENGINES[e]->presets[p];
+  const preset_t *pr = &ENGINES[e]->presets[p];
   for (int k = 0; k < 8; k++) {
     s->e[k] = pr->e[k];
   }
@@ -134,7 +134,7 @@ static int32_t gate_left[NPART][NVOICE];                         /* frames until
 static int32_t last_amp[NPART][NVOICE];
 static uint32_t age;
 
-static void voice_on(track_t* T, const engine_t* E, voice_t* v, int note, int vel) { /* as Felucca's */
+static void voice_on(track_t *T, const engine_t *E, voice_t *v, int note, int vel) { /* as Felucca's */
   int sounding = v->active && v->stage != 0;
   uint32_t ph0 = v->ph[0], ph1 = v->ph[1], ph2 = v->ph[2];
   int32_t s[8];
@@ -167,10 +167,10 @@ static void voice_on(track_t* T, const engine_t* E, voice_t* v, int note, int ve
 
 static void make_room(void) { /* when MAXV voices are playing, the oldest fades out over one block */
   int n = 0;
-  voice_t* old = 0;
+  voice_t *old = 0;
   for (int t = 0; t < NPART; t++) {
     for (int i = 0; i < NVOICE; i++) {
-      voice_t* v = &trk[t].v[i];
+      voice_t *v = &trk[t].v[i];
       if (v->active && v->stage != 4) {
         n++;
         if (!old || v->age < old->age) {
@@ -185,7 +185,7 @@ static void make_room(void) { /* when MAXV voices are playing, the oldest fades 
   }
 }
 
-static void release(voice_t* v) {
+static void release(voice_t *v) {
   if (v->active && v->stage != 4) {
     v->gate = 0;
     v->stage = 3;
@@ -193,13 +193,13 @@ static void release(voice_t* v) {
 }
 
 void synths_note(int t, int note, int vel, int slide, int32_t gate) {
-  const song_track_t* s = &song.track[t];
+  const song_track_t *s = &song.track[t];
   int e = machine_engine(s->machine);
   if (e < 0 || cur[t] != e) {
     return; /* (the track's first block sets the engine up) */
   }
-  const engine_t* E = ENGINES[e];
-  track_t* T = &trk[t];
+  const engine_t *E = ENGINES[e];
+  track_t *T = &trk[t];
   params(T, s);
   if (gate == -2 && !s->mono) { /* tied: the note held from the last step goes now (its release under this one's
                                  * attack); MONO: it is held on into this one, legato (no new attack) */
@@ -212,7 +212,7 @@ void synths_note(int t, int note, int vel, int slide, int32_t gate) {
   }
   int pick = 0, held = -1;
   for (int i = 0; slide && i < NVOICE; i++) { /* a slide: the newest held voice glides on */
-    voice_t* v = &T->v[i];
+    voice_t *v = &T->v[i];
     if (v->active && v->gate && v->stage != 4 && (held < 0 || v->age > T->v[held].age)) {
       held = i;
     }
@@ -221,7 +221,7 @@ void synths_note(int t, int note, int vel, int slide, int32_t gate) {
     pick = held;
   } else if (!s->mono) { /* the same note, else a free voice, else the oldest */
     for (int i = 0; i < NVOICE; i++) {
-      voice_t* v = &T->v[i];
+      voice_t *v = &T->v[i];
       if (v->active && v->note == note) {
         pick = i;
         break;
@@ -233,7 +233,7 @@ void synths_note(int t, int note, int vel, int slide, int32_t gate) {
       }
     }
   }
-  voice_t* v = &T->v[pick];
+  voice_t *v = &T->v[pick];
   if ((slide || s->mono) && v->active && v->gate && v->stage != 4) { /* legato: glide there, no new attack */
     v->note = (uint8_t)note;
     v->pitch16 = note * 16;
@@ -268,8 +268,8 @@ void synths_stop(void) {
 }
 
 /* one block of Felucca's ADSR; Q15 */
-static int32_t env_tick(const track_t* T, voice_t* v) {
-  const int16_t* p = T->p;
+static int32_t env_tick(const track_t *T, voice_t *v) {
+  const int16_t *p = T->p;
   int32_t sus = (int32_t)p[P_SUS] << 17;
   switch (v->stage) {
     case 1:
@@ -313,14 +313,14 @@ void synths_bend(int t, int bend, int depth) {
   }
 }
 
-void synths_render(int t, int32_t* out, uint32_t n) {
-  const song_track_t* s = &song.track[t];
+void synths_render(int t, int32_t *out, uint32_t n) {
+  const song_track_t *s = &song.track[t];
   int e = machine_engine(s->machine);
-  track_t* T = &trk[t];
+  track_t *T = &trk[t];
   if (e != cur[t]) { /* another engine: its voices start from nothing */
     for (int i = 0; i < NVOICE; i++) {
-      voice_t* v = &T->v[i];
-      uint8_t* b = (uint8_t*)v;
+      voice_t *v = &T->v[i];
+      uint8_t *b = (uint8_t *)v;
       for (uint32_t k = 0; k < sizeof *v; k++) {
         b[k] = 0;
       }
@@ -334,7 +334,7 @@ void synths_render(int t, int32_t* out, uint32_t n) {
   if (e < 0) {
     return;
   }
-  const engine_t* E = ENGINES[e];
+  const engine_t *E = ENGINES[e];
   int32_t buf[CTL], tune = (s->tune - 64) * 12 / 64 * 16 + bend16[t];
   if (vib[t]) {
     vib_ph[t] += VIB_INC * n;
@@ -348,7 +348,7 @@ void synths_render(int t, int32_t* out, uint32_t n) {
     buf[i] = 0;
   }
   for (int i = 0; i < NVOICE; i++) {
-    voice_t* v = &T->v[i];
+    voice_t *v = &T->v[i];
     if (!v->active) {
       continue;
     }
