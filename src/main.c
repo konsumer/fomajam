@@ -7,8 +7,8 @@
  *
  *   SEQ        PATTERN  white keys are steps, black keys pick tracks
  *   EDIT       SOUND    the track's sound (SEL shows the next page of knobs); the keys play
- *   HOME       MIX      levels; white keys mute tracks, black keys pick tracks. HOME again: SCOPE (the output),
- *                       and again MIDI IN (what comes in); the keys play on those
+ *   HOME       SCOPE    the output; the keys play. HOME again: MIX (levels; white keys mute tracks, black keys
+ *                       pick tracks), and again MIDI IN (what comes in; the keys play)
  *   FX         FX       sends, delay, reverb, chorus, ducking, the master filter and distortion; the keys play
  *   GLO        GLOBAL   tempo, swing, length, theme, MIDI clock; the keys play
  *   SELECT     picks the track        PRESETS    picks the pattern (playing: the one it rests on, when the one playing ends)
@@ -32,8 +32,8 @@ enum { PG_PATTERN,
        PG_MIX,
        PG_FX,
        PG_GLOBAL,
-       PG_SCOPE, /* HOME again, from MIX */
-       PG_MIDI,  /* and again */
+       PG_SCOPE, /* HOME: SCOPE, then MIX, then MIDI IN */
+       PG_MIDI,
        PAGES };
 static const char *const PAGE_NAME[PAGES] = {"PATTERN", "SOUND", "MIX", "FX", "GLOBAL", "SCOPE", "MIDI IN"};
 /* the buttons by what they do. The SMK-37's labels differ: PATCH opens the sound, PARA the mix, NOTE REPEAT sets a
@@ -2117,9 +2117,9 @@ void loop(void) {
   if (button_pressed(B_SOUND)) {
     set_page(PG_SOUND);
   }
-  if (button_pressed(B_MIX)) { /* MIX, then SCOPE, then MIDI IN, then MIX */
-    set_page(page == PG_MIX ? PG_SCOPE : page == PG_SCOPE ? PG_MIDI
-                                                          : PG_MIX);
+  if (button_pressed(B_MIX)) { /* SCOPE (play right away), then MIX, then MIDI IN, then SCOPE */
+    set_page(page == PG_SCOPE ? PG_MIX : page == PG_MIX ? PG_MIDI
+                                                        : PG_SCOPE);
   }
   if (button_pressed(BTN_FX)) {
     set_page(PG_FX);
