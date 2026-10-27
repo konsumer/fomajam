@@ -528,7 +528,7 @@ async function run(getPkg, { isStock = false, resumeOnly = false } = {}) {
   $('bar').value = 0
   setBusy(true)
   try {
-    const up = new Updater(await midiSysex(), log)
+    const up = new Updater(await midiSysex(), log, [build?.name])
     status('Looking for the FM-1')
     const dev = await up.find()
     if (dev) dev.link.close()
@@ -608,7 +608,7 @@ $('check').addEventListener('click', async () => {
   setBusy(true)
   $('checkinfo').textContent = 'Looking ...'
   try {
-    const up = new Updater(await midiSysex())
+    const up = new Updater(await midiSysex(), null, [build?.name])
     const dev = await up.find()
     if (!dev) $('checkinfo').textContent = TEXT.notfound
     else {
@@ -708,7 +708,7 @@ async function songLink() {
     if (!node) throw Object.assign(new Error('off'), { code: 'off' })
     return { link: emuLink, close() {} }
   }
-  const dev = await new Updater(await midiSysex()).find()
+  const dev = await new Updater(await midiSysex(), null, [build?.name]).find()
   if (!dev) throw Object.assign(new Error('notfound'), { code: 'notfound' })
   return { link: dev.link, close: () => dev.link.close() }
 }

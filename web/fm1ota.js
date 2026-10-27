@@ -154,9 +154,11 @@ async function handshake(link, tries = 3) {
 }
 
 export class Updater {
-  constructor(access, log) {
+  // names: more port names to probe (this project's, which its firmware gives as the USB name)
+  constructor(access, log, names = []) {
     this.access = access
     this.log = log || (() => {})
+    this.names = names.filter(Boolean).map((n) => n.toLowerCase())
   }
 
   // every in/out pair with the same port name that answers the handshake
@@ -164,7 +166,8 @@ export class Updater {
     const outs = [...this.access.outputs.values()]
     for (const input of this.access.inputs.values()) {
       if (input.state === 'disconnected') continue
-      if (!/fm-1|smk|mke|starry|felucca|ota|composite|sinco|usb-midi/i.test(input.name || '')) continue // never probe other gear
+      const name = (input.name || '').toLowerCase()
+      if (!/fm-1|smk|mke|starry|felucca|ota|composite|sinco|usb-midi/.test(name) && !this.names.some((n) => name.includes(n))) continue // never probe other gear
       const output = outs.find((o) => o.name === input.name) || (outs.length === 1 ? outs[0] : null)
       if (!output) continue
       try {
