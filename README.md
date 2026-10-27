@@ -17,7 +17,8 @@ Try it in your browser, and install it on the FM-1 from Chrome or Edge: <https:/
 ## Playing it
 
 Every page has the same layout: a **header** (page, track, pattern, tempo, play/stop), the **body**, and the **knob
-bar**. The knob bar shows what KNOB1–4 do on the current page, always in the same four colors.
+bar**. The knob bar shows what KNOB1–4 do on the current page, always in the same four colors. It starts on SCOPE
+(the `HOME` page), where the keys play the selected track.
 
 | Control     | What it does                                                                                   |
 | ----------- | ---------------------------------------------------------------------------------------------- |
@@ -32,14 +33,14 @@ bar**. The knob bar shows what KNOB1–4 do on the current page, always in the s
 | `ENV`       | Clear the pattern. It asks first: `OCT+` clears, `OCT-` cancels.                               |
 | `OCT-/OCT+` | Change the keyboard's octave. When a question is shown, `OCT+` is yes, `OCT-` is no.           |
 
-| Button       | Page                | Keys                                            | Knobs                                                                                                                                    |
-| ------------ | ------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `SEQ`        | PATTERN             | white keys: the 16 steps; black keys: tracks    | STEP, VOICE (or NOTE), ACCENT, MACHINE                                                                                                   |
-| `EDIT`       | SOUND               | play the track                                  | the track's sound (see [Machines](#machines))                                                                                            |
-| `HOME`       | MIX                 | white keys: mute tracks 1–9; black keys: tracks | LEVEL, DELAY, REVERB, MUTE                                                                                                               |
-| `HOME` again | SCOPE, then MIDI IN | play the track                                  | the MIX knobs. SCOPE shows the output; MIDI IN lists the last messages that came in. `HOME` once more goes back to MIX.                  |
-| `FX`         | FX                  | play the track                                  | 4 pages (press `SEL`): see [Effects](#effects)                                                                                           |
-| `GLO`        | GLOBAL              | play the track                                  | TEMPO page: BPM, SWING, LENGTH, THEME; SETUP page: CLOCK, CC OUT, LIGHTS; MIDI page: MIDI IN, SYNC, SEL CH, TRK CH. Also shows CPU load. |
+| Button       | Page              | Keys                                                                             | Knobs                                                                                                                                    |
+| ------------ | ----------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `SEQ`        | PATTERN           | white keys: the 16 steps; black keys: tracks                                     | STEP, VOICE (or NOTE), ACCENT, MACHINE                                                                                                   |
+| `EDIT`       | SOUND             | play the track                                                                   | the track's sound (see [Machines](#machines))                                                                                            |
+| `HOME`       | SCOPE             | play the track                                                                   | LEVEL, DELAY, REVERB, MUTE (the MIX knobs). SCOPE shows the output.                                                                      |
+| `HOME` again | MIX, then MIDI IN | MIX: white keys mute tracks 1–9, black keys pick tracks; MIDI IN: play the track | the same. MIDI IN lists the last messages that came in. `HOME` once more goes back to SCOPE.                                             |
+| `FX`         | FX                | play the track                                                                   | 4 pages (press `SEL`): see [Effects](#effects)                                                                                           |
+| `GLO`        | GLOBAL            | play the track                                                                   | TEMPO page: BPM, SWING, LENGTH, THEME; SETUP page: CLOCK, CC OUT, LIGHTS; MIDI page: MIDI IN, SYNC, SEL CH, TRK CH. Also shows CPU load. |
 
 **Playing the keys:** on a synth track, the keys are a keyboard. On a drum track, they play the machine's kit: the
 white keys are BD SD CH OH CP RS LT MT HT CY RD CB TB MA CL TI, and the black keys are BD2 SD2 CB2 and the congas. (On
@@ -278,7 +279,7 @@ The FM-1's controls are on the SMK-37's panel, so everything above applies:
 | KNOB1–4        | FADER1–4 (each sets the control's whole range), and K5–K8 (step by step) |
 | `SEQ`          | SEQ (PATTERN)                                                            |
 | `EDIT`         | PATCH (SOUND)                                                            |
-| `HOME`         | PARA (MIX, SCOPE, MIDI IN)                                               |
+| `HOME`         | PARA (SCOPE, MIX, MIDI IN)                                               |
 | `FX`           | FX                                                                       |
 | `GLO`          | GLOBE (GLOBAL)                                                           |
 | `SEL`          | SCALE, or KNOB BANK (KNOB BANK never toggles a slide)                    |
