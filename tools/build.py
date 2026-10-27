@@ -138,11 +138,26 @@ def sources():
   return sorted(SRC.glob("**/*.c"))
 
 
+def git_version():
+  """the version from the last v* tag: 0.1.6 on the tag, 0.1.6-3 three commits after it; None without git or tags"""
+  d = os.environ.get("GITVER")  # ./fm1 reads it outside Docker (the image has no git)
+  if d is None:
+    try:
+      d = subprocess.run(["git", "describe", "--tags", "--match", "v[0-9]*", "--long"], cwd=ROOT, capture_output=True, text=True).stdout
+    except OSError:
+      return None
+  m = re.fullmatch(r"v(.+)-(\d+)-g[0-9a-f]+", d.strip())
+  if not m:
+    return None
+  return m[1] if m[2] == "0" else f"{m[1]}-{m[2]}"
+
+
 def config():
   c = json.loads((ROOT / "firmware.json").read_text())
+  c["version"] = git_version() or c.get("version", "")
   m = re.fullmatch(r"(\d+)\.(\d+)(\.\d+)?(-[A-Za-z0-9]+)?", c.get("version", ""))
   if not m:
-    raise BuildError('firmware.json: "version" must look like 0.1, 1.2.3 or 0.1-beta')
+    raise BuildError(f'version "{c["version"]}" (git tag or firmware.json) must look like 0.1, 1.2.3 or 0.1-beta')
   if not re.fullmatch(r"[A-Z0-9 _.+-]{1,16}", c.get("name", "")):
     raise BuildError('firmware.json: "name" must be 1..16 capitals, digits, spaces or _.+-')
   c["product"] = c["identity"] + m[2][-1]  # FM-1_95 + the minor version's last digit
