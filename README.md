@@ -17,7 +17,8 @@ Try it in your browser, and install it on the FM-1 from Chrome or Edge: <https:/
 ## Playing it
 
 Every page has the same layout: a **header** (page, track, pattern, tempo, play/stop), the **body**, and the **knob
-bar**. The knob bar shows what KNOB1–4 do on the current page, always in the same four colors.
+bar**. The knob bar shows what KNOB1–4 do on the current page, always in the same four colors. It starts on SCOPE
+(the `HOME` page), where the keys play the selected track.
 
 | Control     | What it does                                                                                   |
 | ----------- | ---------------------------------------------------------------------------------------------- |

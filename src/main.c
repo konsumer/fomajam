@@ -49,7 +49,7 @@ static const char *const PAGE_NAME[PAGES] = {"PATTERN", "SOUND", "MIX", "FX", "G
 #endif
 static const uint8_t PAGE_BTN[PAGES] = {BTN_SEQ, B_SOUND, B_MIX, BTN_FX, BTN_GLO, B_MIX, B_MIX};
 
-static int page, sub, track, cursor, octave = -1, rec;
+static int page = PG_SCOPE, sub, track, cursor, octave = -1, rec; /* it starts on SCOPE: the keys play */
 static const theme_t *th;
 
 /* ---- the knobs: every value is a parameter with a name, a range and a way to show it */
