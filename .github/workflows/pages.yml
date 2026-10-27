@@ -1,6 +1,7 @@
 # Builds the firmware and publishes the site (emulator, installer, rescue) to GitHub Pages.
 # Settings -> Pages -> Source: GitHub Actions. Every run keeps the .fwsc files (the FM-1's, and one per SMK-37
-# model: firmware.json "boards") as a "firmware" artifact; tags (v0.2) also get a release with them attached.
+# model: firmware.json "boards") as a "firmware" artifact; tags (v0.2) also get a release with them attached, and
+# then build main again so the site shows the tag's version.
 name: build
 on:
   push:
@@ -9,6 +10,7 @@ on:
   pull_request:
   workflow_dispatch:
 permissions:
+  actions: write
   contents: write
   pages: write
   id-token: write
@@ -35,6 +37,11 @@ jobs:
         with:
           files: build/*.fwsc
           fail_on_unmatched_files: true
+      # the site only deploys from main, which was built before this tag: build it again, now with the tag's version
+      - if: startsWith(github.ref, 'refs/tags/v')
+        run: gh workflow run build --repo "${{ github.repository }}" --ref main
+        env:
+          GH_TOKEN: ${{ github.token }}
   deploy:
     needs: build
     if: github.ref == 'refs/heads/main'
