@@ -38,15 +38,23 @@ static void recovery_step(void)
     }
 }
 
+/* OCT- held at power-on. The key matrix reads nothing until PA2 is low (the LCD backlight pin, set by
+ * fm1_lcd_hw_init: a normal start does that before it reads the keys), so set it first. Then the matrix
+ * gets 100 ms to settle, and OCT- alone, seen in any frame of the next 250 ms, counts. */
 static int recovery_key(void)
 {
-    uint32_t start = fm1_ticks();
+    uint32_t start = fm1_ticks(), t;
+    int seen = 0;
+    fm1_lcd_hw_init();
     fm1_input_init();
     do {
         fm1_wdt_feed();
         fm1_input_scan();
-    } while ((uint32_t)(fm1_ticks() - start) < 50u * 1000u * FM1_TICKS_PER_US);
-    return bootguard_manual(fm1_in.buttons);
+        t = (uint32_t)(fm1_ticks() - start) / (1000u * FM1_TICKS_PER_US);
+        if (t >= 100u && bootguard_manual(fm1_in.buttons))
+            seen = 1;
+    } while (t < 350u && !seen);
+    return seen;
 }
 
 static void recovery_main(void)
