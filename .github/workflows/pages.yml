@@ -17,6 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the tags, for the version
       - run: ./fm1 build
       - run: node test/fm1ota_test.mjs
       - uses: actions/upload-pages-artifact@v3

@@ -359,7 +359,8 @@ losing some messages on the way (and, with `build/render`, checks that the firmw
 
 The functions the firmware can call are in [platform/fm1.h](platform/fm1.h): it's [foma](https://github.com/konsumer/foma)'s
 platform, with its USB audio, TRS MIDI and MIDI clock options on. The name, version, package identity and those options
-are in [firmware.json](firmware.json). The rules of the chip (no floating point, keep `audio()` short, and so on) are
+are in [firmware.json](firmware.json) (the version there is only used without git: builds take it from the last `v*` tag,
+like `0.1.6`, or `0.1.6-3` three commits after it). The rules of the chip (no floating point, keep `audio()` short, and so on) are
 in [foma's README](https://github.com/konsumer/foma#the-rules-of-the-chip).
 
 Every push to `main` publishes the emulator and installer to GitHub Pages (Settings → Pages → Source: GitHub Actions).
