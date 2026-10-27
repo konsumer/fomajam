@@ -250,6 +250,7 @@ static void render(uint32_t at, uint32_t n) {
 
 void audio(int32_t *out, uint32_t frames) {
   static uint8_t was;
+  static uint16_t was_mute;
   static uint32_t avg, peak; /* Q8 % */
   uint32_t t0 = micros();
   if (frames > 256) {
@@ -280,6 +281,16 @@ void audio(int32_t *out, uint32_t frames) {
     }
     q_tail = (q + 1) & (QLEN - 1);
   }
+  if (song.mute & ~was_mute) { /* tracks just muted: what they had sounding goes (MIDI note-offs too) */
+    for (int t = 0; t < TRACKS; t++) {
+      if ((song.mute & ~was_mute) >> t & 1) {
+        rat[t].left = 0;
+        m_off(t);
+        synths_release(t);
+      }
+    }
+  }
+  was_mute = song.mute;
   if (playing != was) { /* (set directly: the tests) */
     was = playing;
     transport(playing, 0);

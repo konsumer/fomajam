@@ -259,11 +259,15 @@ void synths_off(int t, int note) {
   }
 }
 
+void synths_release(int t) {
+  for (int i = 0; i < NVOICE; i++) {
+    release(&trk[t].v[i]);
+  }
+}
+
 void synths_stop(void) {
   for (int t = 0; t < NPART; t++) {
-    for (int i = 0; i < NVOICE; i++) {
-      release(&trk[t].v[i]);
-    }
+    synths_release(t);
   }
 }
 

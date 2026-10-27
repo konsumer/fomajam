@@ -147,7 +147,7 @@ static const uint8_t STR1[] = {42, 3, 'H', 0, 0xFC, 0, 'g', 0, 'e', 0, 'l', 0, '
 static const uint8_t STR2[] = {30, 3, 'F', 0, 'e', 0, 'l', 0, 'u', 0, 'c', 0, 'c', 0, 'a', 0, ' ', 0, 'U', 0, 'p', 0,
                                'd', 0, 'a', 0, 't', 0, 'e', 0};
 #else
-static const uint8_t STR2[] = {16, 3, 'F', 0, 'e', 0, 'l', 0, 'u', 0, 'c', 0, 'c', 0, 'a', 0};
+static uint8_t STR2[2 + 2 * 16]; /* the product name: APP_NAME (firmware.json "name"), filled in on first ask */
 #endif
 
 static int get_desc(uint32_t wvalue, const uint8_t **d, uint16_t *l)
@@ -172,8 +172,20 @@ static int get_desc(uint32_t wvalue, const uint8_t **d, uint16_t *l)
             *l = sizeof STR1;
             return 1;
         case 2:
+#ifndef FELUCCA_LOADER
+            if (!STR2[0]) {
+                int n = 0;
+                for (; APP_NAME[n] && n < 16; n++)
+                    STR2[2 + 2 * n] = (uint8_t)APP_NAME[n];
+                STR2[0] = (uint8_t)(2 + 2 * n);
+                STR2[1] = 3;
+            }
+            *d = STR2;
+            *l = STR2[0];
+#else
             *d = STR2;
             *l = sizeof STR2;
+#endif
             return 1;
         default:
             return 0;
