@@ -219,7 +219,7 @@ void print(const char *s);             /* to the emulator's console (nothing on 
 #ifdef __wasm__
 #define POOL
 #else
-#define POOL __attribute__((section(".pool")))
+#define POOL __attribute__((section(".pool"), aligned(4))) /* aligned: word access into a byte buffer */
 #endif
 
 #endif
