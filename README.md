@@ -346,7 +346,7 @@ You only need Docker:
 | [src/synths.c](src/synths.c)             | the host for the synth engines (Felucca's are in `vendor/`)           |
 | [src/eng_string.h](src/eng_string.h)     | the STRING engine                                                     |
 | [src/eng_supersaw.h](src/eng_supersaw.h) | the SUPERSAW engine                                                   |
-| [src/groove.h](src/groove.h)             | the song format (also what gets saved, 4 KiB at most)                 |
+| [src/groove.h](src/groove.h)             | the song format (also what gets saved, 12 KiB at most)                |
 | [src/drums.h](src/drums.h)               | the modeled drum machines as integer tables, made by `tools/drums.py` |
 | [src/gains.h](src/gains.h)               | each modeled voice's level, made by `test/render.c --calibrate`       |
 | [src/themes.h](src/themes.h)             | the color themes                                                      |
