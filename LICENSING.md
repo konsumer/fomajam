@@ -40,6 +40,21 @@ it be used under GPL-3.0; FOMAJAM's version uses integer math.
 
 The reverb in `src/fx.c` uses the delay lengths and structure of Jezar's Freeverb, which is public domain.
 
+Bluetooth MIDI (the `fm1bt` package, as in [foma](https://github.com/konsumer/foma)):
+
+- `platform/ble/`: Henri David's (hdavid) BLE stack from [Optimist](https://github.com/w0ts/optimist), as
+  [fm1-base](https://github.com/charlesvestal/fm1-base) (Charles Vestal) carries it in `bt/ble` (commit 4039a8b).
+  Its files are `GPL-3.0-only OR MPL-2.0` ([w0ts/optimist#55](https://github.com/w0ts/optimist/issues/55)), used here
+  under GPL-3.0-only.
+- `platform/hal/fm1_ble.h`, `fm1_ble_rf.h`: the radio drivers, Optimist's, from
+  [felucca-bsp](https://github.com/hugelton/felucca-bsp) (commit b0b2428), `GPL-3.0-only OR MPL-2.0`. The flash's
+  unique-ID read (`fl_uid_ram` in `platform/hal/fm1_flash.h`) is felucca-bsp's too (MPL-2.0).
+- `platform/hal/ble_rf_tables_v15.h` (the radio's start-up writes, recorded from M-VAVE's stock V15 firmware: JieLi's
+  and M-VAVE's) and `platform/hal/fm1_rf_cal.h` (JieLi's radio calibration, rewritten in C by Charles Vestal), from
+  felucca-bsp (b0b2428): Apache-2.0 (`LICENSES/Apache-2.0.txt`, which the Bluetooth package ships). Their headers say
+  where they come from and what changed.
+- `platform/bt.c` (the glue) is foma's; the radio's constant trims in it are fm1-base's.
+
 ## Third-party material
 
 | What                                                                                      | License     | Where                                           |

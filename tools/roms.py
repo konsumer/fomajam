@@ -566,9 +566,10 @@ def encode(x):
   return bytes(codes[i] | codes[i + 1] << 4 for i in range(0, len(codes), 2)), idx0
 
 
-def generate(cache, out):
+def generate(cache, out, budget=BUDGET):
+  """the ROM machines' header at out: MACHINES in order, as many as fit in budget bytes"""
   stamp = Path(out).with_suffix(".stamp")  # the same table and code as last time: the same header
-  key = hashlib.sha1((Path(__file__).read_text() + (Path(__file__).parent / "drums.py").read_text()).encode()).hexdigest()
+  key = hashlib.sha1((Path(__file__).read_text() + (Path(__file__).parent / "drums.py").read_text() + str(budget)).encode()).hexdigest()
   if Path(out).exists() and stamp.exists() and stamp.read_text().split("\n")[0] == key:
     names, total = stamp.read_text().split("\n")[1:3]
     return names.split(), int(total)
@@ -581,7 +582,7 @@ def generate(cache, out):
       continue
     enc = {v: (encode(x), rate) for v, (x, rate) in ((v, prepare(x, r, drums.TARGET[v])) for v, (x, r) in got.items())}
     size = sum(len(d) for (d, _), _ in enc.values())
-    if total + size > BUDGET:
+    if total + size > budget:
       left.append(name)
       continue
     m = len(names)
@@ -594,7 +595,7 @@ def generate(cache, out):
       cells.append(f"[V_{v}] = {{R{m}_{v}, {len(data) * 2}, {round(rate * 65536 / RATE)}, {idx0}}}")
     rows.append("  {" + ", ".join(cells) + "},\n")
   if left:
-    print(f"roms: no room for {' '.join(left)} (BUDGET in tools/roms.py)", file=sys.stderr)
+    print(f"roms: no room for {' '.join(left)} in {budget // 1024} KiB (BUDGET in tools/roms.py)", file=sys.stderr)
   if not names:
     rows.append("  {{0, 0, 0, 0}},\n")
   n = str(max(1, len(names)))

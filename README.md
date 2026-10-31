@@ -161,7 +161,7 @@ The GLOBAL page's third page (press `SEL` twice) sets up MIDI in:
 
 | Knob    | What it does                                                                                     |
 | ------- | ------------------------------------------------------------------------------------------------ |
-| MIDI IN | where MIDI comes from: `BOTH`, `USB` or `TRS`. Everything else is ignored, the clock too.        |
+| MIDI IN | where MIDI comes from: `BOTH`, `USB` or `TRS` (`ALL`, `USB`, `TRS` or `BT` in the [Bluetooth version](#bluetooth-midi)). Everything else is ignored, the clock too. |
 | SYNC    | `INT`: the FM-1 keeps its own tempo. `EXT`: it follows the MIDI clock coming in (see below).     |
 | SEL CH  | the channel that plays the selected track (10 at first), or `OFF`                                |
 | TRK CH  | the channel the selected track listens on (its number at first), or `OFF`. Tracks can share one. |
@@ -194,6 +194,23 @@ continue from the other device. `PLAY` still works, but nothing moves until the 
 clock's tempo (`--` until one comes), and the delay time and `SWING` follow it; `BPM` waits until you go back to
 `INT`. With `CLOCK` on too, the ticks are passed on over USB, so a computer can follow a drum machine on the TRS jack.
 Pick one source in `MIDI IN` when both send clock.
+
+### Bluetooth MIDI
+
+There's a second FM-1 package with Bluetooth MIDI: `fomajam-bt-VERSION.fwsc` (on the install page, **Install with
+Bluetooth MIDI**). A phone, tablet or computer connects to it as a Bluetooth MIDI device, `FOMAJAM` and four hex
+digits, and everything above works over it: playing the tracks, the CCs, MIDI out, and the clock both ways (`SYNC`
+on `EXT` follows a clock from Bluetooth, `CLOCK` sends one). Set `MIDI IN` to `BT` to take MIDI from Bluetooth
+only. Bluetooth is always on in this version (the sound starts a moment later at power-on, while the radio starts); the MIDI IN page (`HOME` three times) says whether something is
+connected while nothing has come in yet.
+
+To make room it leaves out one ROM machine (ACE); your own [kits](#kits) still load as before. On a Mac: Audio MIDI
+Setup, Window > Show MIDI Studio, the Bluetooth button, then Connect. On iOS, apps that take Bluetooth MIDI connect
+from their own settings.
+
+The Bluetooth stack is Henri David's, from [Optimist](https://github.com/w0ts/optimist), with the radio drivers of
+[felucca-bsp](https://github.com/hugelton/felucca-bsp): no pairing (Macs and iPhones connect without it), and the
+FM-1 doesn't connect out to Bluetooth controllers itself.
 
 ## Samples
 

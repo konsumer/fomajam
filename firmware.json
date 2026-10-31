@@ -2,7 +2,7 @@
   "name": "FOMAJAM",
   "version": "0.1",
   "identity": "FM-1_96",
-  "boards": ["fm1", "smk37"],
+  "boards": ["fm1", "fm1bt", "smk37"],
   "options": {
     "usb_audio": true,
     "trs_midi": true,

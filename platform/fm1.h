@@ -22,6 +22,9 @@
 #ifndef FOMA_MIDI_CLOCK
 #define FOMA_MIDI_CLOCK 1 /* midi_clock: one MIDI clock for audio(), its own or followed: clock_*() */
 #endif
+#ifndef FOMA_BLUETOOTH
+#define FOMA_BLUETOOTH 0 /* bluetooth: BLE MIDI, bt_*() (firmware.json "boards": "fm1bt") */
+#endif
 /* the board: 0 the FM-1 (and the emulator), 1 the M-Vave SMK-37 (firmware.json "boards"). The calls below are the
  * same on both; the SMK-37's extras (velocity, wheels, faders, its four more buttons, colored pads) answer
  * "nothing there" on the FM-1 */
@@ -130,13 +133,15 @@ int text(int x, int y, const char *s, uint16_t color, int font); /* returns the 
 int text_width(const char *s, int font);
 int text_height(int font);
 
-/* ---- MIDI in over USB (and the TRS jack: trs_midi), out over USB (any channel; SysEx belongs to the updater).
+/* ---- MIDI in over USB (and the TRS jack: trs_midi; BLE: bluetooth), out over USB (and BLE) (any channel; SysEx
+ * belongs to the updater).
  * midi_read gives channel messages, and clock / start / continue / stop (0xF8 0xFA 0xFB 0xFC) unless the clock
  * helper (midi_clock) takes them. midi_send works from loop() and audio() */
 enum { MIDI_USB = 1,
        MIDI_TRS = 2,
-       MIDI_ANY = 3 };
-int midi_read(uint8_t *status, uint8_t *d1, uint8_t *d2); /* 0: none; else where it came from: MIDI_USB or MIDI_TRS */
+       MIDI_BLE = 4,
+       MIDI_ANY = 7 };
+int midi_read(uint8_t *status, uint8_t *d1, uint8_t *d2); /* 0: none; else where it came from: MIDI_USB, MIDI_TRS, MIDI_BLE */
 void midi_send(uint8_t status, uint8_t d1, uint8_t d2);
 
 #if FOMA_MIDI_CLOCK
@@ -161,6 +166,38 @@ void clock_continue(void);
 void clock_stop(void);
 int clock_events(const clock_event_t **ev); /* audio() only: this block's events; returns how many */
 uint32_t clock_bpm(void);                   /* BPM x 100: its tempo, or the followed clock's (0: none coming) */
+#endif
+
+#if FOMA_BLUETOOTH
+/* ---- Bluetooth MIDI (bluetooth). Off until bt_enable(BT_MIDI) (from loop()): the FM-1 shows up as a BLE MIDI device
+ * phones and computers connect to. MIDI from it comes in through midi_read (MIDI_BLE), and midi_send goes out over
+ * it too. Pass 0 to switch it off (the link ends, advertising stops) */
+enum { BT_AUDIO = 1,
+       BT_MIDI = 2 };
+enum { BLE_OFF,
+       BLE_IDLE,
+       BLE_ADVERTISING,
+       BLE_SCANNING,
+       BLE_CONNECTING,
+       BLE_DISCOVERING,
+       BLE_CONNECTED,
+       BLE_READY,
+       BLE_DISCONNECTING };
+typedef struct {
+  uint8_t ready;                          /* the radio has started */
+  uint8_t audio_connected, audio_playing; /* (foma's "mvave" platform only) */
+  uint8_t ble_role, ble_state;            /* BLE_* (BLE_READY: MIDI flows) */
+  uint8_t ble_count, ble_error;
+} bt_status_t;
+int bt_enable(int features); /* BT_MIDI, 0 off */
+void bt_status(bt_status_t *s);
+int ble_central(int on); /* (not here: these answer "not ready") */
+int ble_scan(void);
+int ble_device(int i, char name[25], int *rssi);
+int ble_connect(int i);
+int ble_disconnect(void);
+int ble_forget(void);
+const int32_t *bt_audio_in(void);
 #endif
 
 #if FOMA_USB_AUDIO

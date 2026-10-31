@@ -209,7 +209,7 @@ static const struct {
     [P_DTYPE] = {"TYPE", 0, DISTS - 1, F_DIST},
     [P_CCOUT] = {"CC OUT", 0, 1, F_ONOFF},
     [P_LIGHTS] = {"LIGHTS", 0, 2, F_LIGHTS},
-    [P_MIDIIN] = {"MIDI IN", 0, 2, F_SOURCE},
+    [P_MIDIIN] = {"MIDI IN", 0, 2 + FOMA_BLUETOOTH, F_SOURCE},
     [P_SYNC] = {"SYNC", 0, 1, F_SYNC},
     [P_SELCH] = {"SEL CH", 0, 16, F_INCH},
     [P_RXCH] = {"TRK CH", 0, 16, F_INCH},
@@ -592,8 +592,13 @@ static void pformat(int id, int v, char *out) {
       break;
     }
     case F_SOURCE: {
+#if FOMA_BLUETOOTH
+      static const char *const SOURCE[4] = {"ALL", "USB", "TRS", "BT"};
+      s = SOURCE[v & 3];
+#else
       static const char *const SOURCE[3] = {"BOTH", "USB", "TRS"};
       s = SOURCE[v % 3];
+#endif
       break;
     }
     case F_SYNC:
@@ -671,9 +676,12 @@ static void track_title(int t, char *out, int label) { /* "3 909 CH", "9 ANALOG 
   append(out, i, voice_name(machine_of(t), song.track[t].voice));
 }
 
+/* MIDI IN's source as midi_read says it (0: any); 3 is Bluetooth (the fm1bt build: elsewhere any) */
+static int midi_src(void) { return song.midiin == 3 ? (FOMA_BLUETOOTH ? MIDI_BLE : 0) : song.midiin; }
+
 /* the MIDI clock (fm1.h): the song's tempo, or with SYNC on EXT the clock coming in on MIDI IN; CLOCK sends it */
 static void clock_setup(void) {
-  clock_follow(song.sync ? (song.midiin ? song.midiin : MIDI_ANY) : 0);
+  clock_follow(song.sync ? (midi_src() ? midi_src() : MIDI_ANY) : 0);
   clock_send(song.clock);
   clock_tempo(song.bpm * 100u);
 }
@@ -1093,6 +1101,15 @@ static void draw_midi(int all) {
     text(8, 50, "CH 1-9: TRACKS 1-9", th->dim, FONT_SMALL);
     text(8, 70, "CH 10: SELECTED TRACK", th->dim, FONT_SMALL);
     text(8, 90, "CH 16: SONG (CC.md)", th->dim, FONT_SMALL);
+#if FOMA_BLUETOOTH
+    {
+      static const char *const ST[] = {"OFF", "OFF", "WAITING", "OFF", "CONNECTING", "CONNECTING", "CONNECTING", "CONNECTED", "OFF"};
+      bt_status_t b;
+      bt_status(&b);
+      text(8, 120, "BLUETOOTH:", th->dim, FONT_SMALL);
+      text(8 + text_width("BLUETOOTH: ", FONT_SMALL), 120, ST[b.ble_state < 9 ? b.ble_state : 0], b.ble_state == BLE_READY ? th->accent : th->text, FONT_SMALL);
+    }
+#endif
     return;
   }
   int lines = mlog_n < MLOG ? (int)mlog_n : MLOG;
@@ -1705,7 +1722,7 @@ static void midi_note(int t, int on, int off, int d1, int d2) {
 static void midi_in(void) {
   uint8_t st, d1, d2;
   for (int src; (src = midi_read(&st, &d1, &d2));) {
-    if (song.midiin && song.midiin != src) { /* MIDI IN: from USB or TRS only */
+    if (midi_src() && midi_src() != src) { /* MIDI IN: from one source only */
       continue;
     }
     mlog[mlog_n % MLOG][0] = st, mlog[mlog_n % MLOG][1] = d1, mlog[mlog_n % MLOG][2] = d2; /* for the MIDI IN page */
@@ -2109,6 +2126,22 @@ void loop(void) {
   static uint8_t pattern_drawn, playing_drawn;
   static uint16_t hits_seen[TRACKS];
   uint32_t now = millis();
+#if FOMA_BLUETOOTH
+  { /* Bluetooth MIDI: always on in this build; the MIDI IN page says how it's doing */
+    static uint8_t on, said = 0xFF;
+    bt_status_t b;
+    if (!on && bt_enable(BT_MIDI) == 0) {
+      on = 1;
+    }
+    bt_status(&b);
+    if (b.ble_state != said) {
+      said = b.ble_state;
+      if (page == PG_MIDI && !mlog_n) {
+        draw_midi(1);
+      }
+    }
+  }
+#endif
 
   /* the buttons */
   if (button_pressed(BTN_SEQ)) {
