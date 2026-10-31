@@ -69,6 +69,7 @@ static void block(int32_t *b) {
 int midi_read(uint8_t *a, uint8_t *b, uint8_t *c) { return 0; }
 static int midi_log;
 static uint32_t frame_now;
+void midi_frame(uint32_t at) { (void)at; }
 void midi_send(uint8_t a, uint8_t b, uint8_t c) {
   if (midi_log) {
     printf("%6.1f ms  %02X %3d %3d\n", frame_now / 44.1, a, b, c);
@@ -205,7 +206,8 @@ static uint32_t make_bank(uint8_t *b) {
     ota_wr32(e + 8, n), ota_wr32(e + 12, lens[i]);
     ota_wr16(e + 16, 22050);
     e[18] = 40;
-    e[19] = i == 2 ? V_BD : i == 3 ? V_CH : 0;
+    e[19] = i == 2 ? V_BD : i == 3 ? V_CH
+                                   : 0;
     for (uint32_t k = 0; k < lens[i] / 2; k++) {
       b[n + k] = (uint8_t)(i & 1 ? random32() : (k & 8 ? 0x77 : 0xFF)); /* (codes up and down: a loud wave) */
     }
@@ -352,7 +354,8 @@ int main(int argc, char **argv) {
           static int16_t o[LEN];
           char path[512];
           for (uint32_t i = 0; i < LEN; i++) {
-            o[i] = (int16_t)(buf[i] > 32767 ? 32767 : buf[i] < -32767 ? -32767 : buf[i]);
+            o[i] = (int16_t)(buf[i] > 32767 ? 32767 : buf[i] < -32767 ? -32767
+                                                                      : buf[i]);
           }
           snprintf(path, sizeof path, "%s/%s-%s.wav", argv[2], machine_name(m), voice_name(m, v));
           wav(path, o, tail + 4410 < LEN ? tail + 4410 : LEN);
@@ -400,7 +403,8 @@ int main(int argc, char **argv) {
           static int16_t o[SLEN];
           char path[512];
           for (uint32_t i = 0; i < SLEN; i++) {
-            o[i] = (int16_t)(sb[i] > 32767 ? 32767 : sb[i] < -32767 ? -32767 : sb[i]);
+            o[i] = (int16_t)(sb[i] > 32767 ? 32767 : sb[i] < -32767 ? -32767
+                                                                    : sb[i]);
           }
           snprintf(path, sizeof path, "%s/%s-%02d.wav", argv[2], machine_name(m), pr);
           wav(path, o, SLEN);
@@ -441,9 +445,10 @@ int main(int argc, char **argv) {
   if (!strcmp(mode, "--calibrate")) {
     extern const int16_t *gain_table(void);
     FILE *f = fopen("src/gains.h", "w");
-    fprintf(f, "/* made by test/render.c --calibrate: do not edit. Each modeled voice's gain, Q15, so that at the\n"
-               " * default knobs it peaks at TARGET (drums.h) */\n#ifndef GAINS_H\n#define GAINS_H\n#include \"drums.h\"\n"
-               "static const int16_t GAIN[M_MODELLED][V_COUNT] = {\n");
+    fprintf(f,
+            "/* made by test/render.c --calibrate: do not edit. Each modeled voice's gain, Q15, so that at the\n"
+            " * default knobs it peaks at TARGET (drums.h) */\n#ifndef GAINS_H\n#define GAINS_H\n#include \"drums.h\"\n"
+            "static const int16_t GAIN[M_MODELLED][V_COUNT] = {\n");
     for (int m = 0; m < M_MODELLED; m++) {
       fprintf(f, "  {");
       for (int v = 0; v < V_COUNT; v++) {
@@ -482,7 +487,8 @@ int main(int argc, char **argv) {
         long a = labs(b[j]);
         peak = a > peak ? a : peak;
         over += a > 30000;
-        o[i * 2 + j] = (int16_t)(b[j] > 32767 ? 32767 : b[j] < -32767 ? -32767 : b[j]);
+        o[i * 2 + j] = (int16_t)(b[j] > 32767 ? 32767 : b[j] < -32767 ? -32767
+                                                                      : b[j]);
       }
     }
     FILE *f = fopen(argv[2], "wb");
