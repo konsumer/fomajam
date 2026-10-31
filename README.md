@@ -335,6 +335,9 @@ You only need Docker:
 ```sh
 ./fm1 dev          # http://localhost:8000: the emulator, installer and rescue; rebuilds when you save
 ./fm1 build        # build/fomajam-VERSION.fwsc, and the SMK-37 packages (firmware.json "boards")
+./fm1 flash        # install the build on the FM-1 over USB, no browser (macOS, Linux: needs python3)
+./fm1 flash bt     # the Bluetooth MIDI version (any package the build made: bt, smk37, smk37-elite, smk37-mke)
+./fm1 flash --id   # what the FM-1 runs now (FM-1_000: the USB rescue)
 ```
 
 | File                                     | What it is                                                            |
