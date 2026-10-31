@@ -301,6 +301,7 @@ void audio(int32_t *out, uint32_t frames) {
     uint32_t n = frames - i < 32 ? frames - i : 32;
     for (; e < nev && ev[e].at < i + n; e++) { /* the clock's ticks, start, continue, stop in this block */
       int what = ev[e].what;
+      midi_frame(ev[e].at); /* (MIDI tracks' notes: Bluetooth MIDI stamps them with their frame's time) */
       if (what == CLOCK_TICK) {
         if (playing) {
           tick();
@@ -317,15 +318,18 @@ void audio(int32_t *out, uint32_t frames) {
     }
     if (playing) {
       if (swing_in >= 0 && swing_in < (int32_t)n) {
+        midi_frame(i + (uint32_t)swing_in);
         swing_in = -1;
         next_step();
       } else if (swing_in >= 0) {
         swing_in -= (int32_t)n;
       }
+      midi_frame(i);
       rat_tick(n);
     } else {
       cur_pattern = song.pattern;
     }
+    midi_frame(i);
     m_tick(n);
     render(i, n);
   }
