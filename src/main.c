@@ -1089,6 +1089,30 @@ static void put_int(char *s, int *n, int v) {
   put(s, n, d);
 }
 
+#if FOMA_BLUETOOTH
+/* Bluetooth: the MIDI IN page's last line. With MIDI IN on BT the FM-1 connects to the nearest BLE MIDI device
+ * (bt_link, in loop()); what it connected to is bt_peer */
+static char bt_peer[25];
+static void draw_bt(void) {
+  static const char *const ST[] = {"OFF", "OFF", "WAITING", "LOOKING", "CONNECTING", "CONNECTING", "CONNECTED", "CONNECTED", "OFF"};
+  bt_status_t b;
+  char s[40];
+  int n = 0;
+  bt_status(&b);
+  s[0] = 0;
+  put(s, &n, "BT ");
+  put(s, &n, ST[b.ble_state < 9 ? b.ble_state : 0]);
+  if (b.ble_role && b.ble_state == BLE_READY && bt_peer[0]) {
+    put(s, &n, ": ");
+    put(s, &n, bt_peer);
+  }
+  rect(0, 164, SCREEN_W, 16, th->bg);
+  text(8, 164, s, b.ble_state == BLE_READY ? th->accent : th->dim, FONT_SMALL);
+}
+#else
+static void draw_bt(void) {}
+#endif
+
 static void draw_midi(int all) {
   static uint32_t shown = ~0u;
   if (!all && shown == mlog_n) {
@@ -1101,18 +1125,10 @@ static void draw_midi(int all) {
     text(8, 50, "CH 1-9: TRACKS 1-9", th->dim, FONT_SMALL);
     text(8, 70, "CH 10: SELECTED TRACK", th->dim, FONT_SMALL);
     text(8, 90, "CH 16: SONG (CC.md)", th->dim, FONT_SMALL);
-#if FOMA_BLUETOOTH
-    {
-      static const char *const ST[] = {"OFF", "OFF", "WAITING", "OFF", "CONNECTING", "CONNECTING", "CONNECTING", "CONNECTED", "OFF"};
-      bt_status_t b;
-      bt_status(&b);
-      text(8, 120, "BLUETOOTH:", th->dim, FONT_SMALL);
-      text(8 + text_width("BLUETOOTH: ", FONT_SMALL), 120, ST[b.ble_state < 9 ? b.ble_state : 0], b.ble_state == BLE_READY ? th->accent : th->text, FONT_SMALL);
-    }
-#endif
+    draw_bt();
     return;
   }
-  int lines = mlog_n < MLOG ? (int)mlog_n : MLOG;
+  int lines = mlog_n < MLOG - FOMA_BLUETOOTH ? (int)mlog_n : MLOG - FOMA_BLUETOOTH; /* (Bluetooth: the last line's) */
   for (int k = 0; k < lines; k++) {
     const uint8_t *m = mlog[(mlog_n - lines + k) % MLOG];
     int ch = m[0] & 15, kind = m[0] & 0xF0, n = 0;
@@ -1152,6 +1168,7 @@ static void draw_midi(int all) {
     text(8, 28 + k * 17, s, k == lines - 1 ? c : th->dim, FONT_SMALL);
     rect(2, 32 + k * 17, 3, 9, c);
   }
+  draw_bt();
 }
 
 /* ---- GLOBAL: the tempo, the theme, the load */
@@ -2127,17 +2144,41 @@ void loop(void) {
   static uint16_t hits_seen[TRACKS];
   uint32_t now = millis();
 #if FOMA_BLUETOOTH
-  { /* Bluetooth MIDI: always on in this build; the MIDI IN page says how it's doing */
-    static uint8_t on, said = 0xFF;
+  { /* Bluetooth MIDI: always on in this build. With MIDI IN on BT, while nothing is connected to it, the FM-1 looks
+     * for BLE MIDI devices (3 s) and connects to the nearest (another FM-1, a controller); SYNC on EXT then follows
+     * its clock, as USB's or TRS's. The MIDI IN page says how it's doing */
+    static uint8_t on, said = 0xFF, linking;
+    static uint32_t scan_at;
     bt_status_t b;
     if (!on && bt_enable(BT_MIDI) == 0) {
       on = 1;
     }
     bt_status(&b);
+    int want = on && midi_src() == MIDI_BLE;
+    if (want != linking) { /* (MIDI IN away from BT: leave the device we connected to) */
+      linking = (uint8_t)want;
+      ble_central(want);
+      bt_peer[0] = 0;
+      scan_at = now - 10000u;
+    }
+    if (want && b.ble_state == BLE_ADVERTISING && now - scan_at > 5000u && ble_scan() == 0) {
+      scan_at = now; /* (nothing connected: look again every 5 s) */
+    } else if (want && b.ble_state == BLE_SCANNING && now - scan_at > 3000u && b.ble_count) {
+      int best = -1, best_rssi = -1000, r;
+      char nm[25];
+      for (int i = 0; ble_device(i, nm, &r) == 0; i++) {
+        if (r > best_rssi) {
+          best = i, best_rssi = r;
+        }
+      }
+      if (best >= 0 && ble_device(best, bt_peer, 0) == 0 && ble_connect(best) == 0) {
+        scan_at = now;
+      }
+    }
     if (b.ble_state != said) {
       said = b.ble_state;
-      if (page == PG_MIDI && !mlog_n) {
-        draw_midi(1);
+      if (page == PG_MIDI) {
+        draw_bt();
       }
     }
   }

@@ -97,7 +97,8 @@ OFF_BY_DEFAULT = {"bluetooth"}
 SMK_MODELS = [("SMK-37 Pro", ""), ("SMK-37 Elite", "-elite"), ("MKE-P37", "-mke")]
 BOARDS = ("fm1", "fm1bt", "smk37")
 GEN_BT = OUT / "gen-bt"  # the fm1bt build's generated headers, ahead of build/gen: fewer ROM machines
-BT_ROM_BUDGET = roms.BUDGET - 32 * 1024  # the Bluetooth stack's room
+BT_ROM_BUDGET = roms.BUDGET - 47 * 1024  # the Bluetooth stack's room
+BT_ROM_SECONDS = 0.77  # and its sounds a little shorter than roms.MAX_SECONDS, so the eight machines still fit
 
 
 def targets(cfg):
@@ -503,7 +504,7 @@ def build(dev_mode=False):
     names, size = roms.generate(ROOT / "roms", OUT / "gen" / "roms.h")
     log.append(f"roms      {' '.join(names) or 'none (offline?)'}, {size // 1024} KiB")
     if "fm1bt" in cfg["boards"]:
-      names, size = roms.generate(ROOT / "roms", GEN_BT / "roms.h", BT_ROM_BUDGET)
+      names, size = roms.generate(ROOT / "roms", GEN_BT / "roms.h", BT_ROM_BUDGET, BT_ROM_SECONDS)
       log.append(f"roms (BT) {' '.join(names) or 'none (offline?)'}, {size // 1024} KiB")
     try:
       n = build_wasm(cfg)

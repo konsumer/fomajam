@@ -200,17 +200,27 @@ Pick one source in `MIDI IN` when both send clock.
 There's a second FM-1 package with Bluetooth MIDI: `fomajam-bt-VERSION.fwsc` (on the install page, **Install with
 Bluetooth MIDI**). A phone, tablet or computer connects to it as a Bluetooth MIDI device, `FOMAJAM` and four hex
 digits, and everything above works over it: playing the tracks, the CCs, MIDI out, and the clock both ways (`SYNC`
-on `EXT` follows a clock from Bluetooth, `CLOCK` sends one). Set `MIDI IN` to `BT` to take MIDI from Bluetooth
-only. Bluetooth is always on in this version (the sound starts a moment later at power-on, while the radio starts); the MIDI IN page (`HOME` three times) says whether something is
-connected while nothing has come in yet.
+on `EXT` follows a clock from Bluetooth, `CLOCK` sends one). Bluetooth is always on in this version (the sound starts
+a moment later at power-on, while the radio starts).
 
-To make room it leaves out one ROM machine (ACE); your own [kits](#kits) still load as before. On a Mac: Audio MIDI
-Setup, Window > Show MIDI Studio, the Bluetooth button, then Connect. On iOS, apps that take Bluetooth MIDI connect
-from their own settings.
+**`MIDI IN` on `BT`** takes MIDI from Bluetooth only, and while nothing is connected to the FM-1 it connects to the
+nearest Bluetooth MIDI device itself: another FM-1, a Bluetooth keyboard or controller, anything that advertises as
+one. So to play two FM-1s together (or an FM-1 with another Bluetooth MIDI machine):
+
+- the leader: `CLOCK` on, `SYNC` on `INT` (and `MIDI IN` not on `BT`), as for USB;
+- the follower: `MIDI IN` on `BT` and `SYNC` on `EXT`. It finds the leader within a few seconds, follows its tempo,
+  start and stop, and its MIDI tracks play the follower's tracks by channel, as over a cable.
+
+The link is one to one, and it's made again if it drops. The MIDI IN page (`HOME` until you're there) says on its last
+line what's going on (`BT WAITING`, `LOOKING`, `CONNECTING`, `CONNECTED: FOMAJAM 1A2B`). The FM-1 doesn't pair, so a
+device that insists on pairing won't connect.
+
+To make room it leaves out one ROM machine (ACE), and the other recordings are cut a little sooner (0.77 s instead of
+0.8 s); your own [kits](#kits) still load as before. On a Mac: Audio MIDI Setup, Window > Show MIDI Studio, the
+Bluetooth button, then Connect. On iOS, apps that take Bluetooth MIDI connect from their own settings.
 
 The Bluetooth stack is Henri David's, from [Optimist](https://github.com/w0ts/optimist), with the radio drivers of
-[felucca-bsp](https://github.com/hugelton/felucca-bsp): no pairing (Macs and iPhones connect without it), and the
-FM-1 doesn't connect out to Bluetooth controllers itself.
+[felucca-bsp](https://github.com/hugelton/felucca-bsp).
 
 ## Samples
 
