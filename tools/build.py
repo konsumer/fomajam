@@ -8,7 +8,9 @@
 
 firmware.json "boards" (default ["fm1"]) adds "smk37": the M-Vave SMK-37 (same chip, its own panel and flash map;
 platform/hal/smk_input.h), one package per model name (SMK-37 Pro, SMK-37 Elite, MKE-P37), since M-Vave's updater
-only takes a unit's own model. --dev builds the FM-1 only.
+only takes a unit's own model. "fm1bt" adds a second FM-1 package, NAME-bt-VERSION.fwsc: Bluetooth MIDI (the
+bluetooth option, platform/bt.c) in place of the ROM machines that no longer fit (BT_ROM_BUDGET, build/gen-bt/roms.h).
+--dev builds the FM-1 only.
 
 The FM-1 part is Dinghy's / Felucca's build (Leo Kuroshita, Hügelton Instruments; zvenson):
 the app, the update loader, the checks that keep a build from bricking the FM-1, the package.
@@ -87,12 +89,15 @@ def tc_all(*cmds):
 
 
 # firmware.json "options": the platform's parts you can leave out (all in unless set false), as FOMA_* in fm1.h
-OPTIONS = {"usb_audio": "FOMA_USB_AUDIO", "trs_midi": "FOMA_TRS_MIDI", "midi_clock": "FOMA_MIDI_CLOCK"}
+OPTIONS = {"usb_audio": "FOMA_USB_AUDIO", "trs_midi": "FOMA_TRS_MIDI", "midi_clock": "FOMA_MIDI_CLOCK", "bluetooth": "FOMA_BLUETOOTH"}
+OFF_BY_DEFAULT = {"bluetooth"}
 
 
 # the boards firmware.json "boards" can list. smk37: one target per model name (one keyboard, three names)
 SMK_MODELS = [("SMK-37 Pro", ""), ("SMK-37 Elite", "-elite"), ("MKE-P37", "-mke")]
-BOARDS = ("fm1", "smk37")
+BOARDS = ("fm1", "fm1bt", "smk37")
+GEN_BT = OUT / "gen-bt"  # the fm1bt build's generated headers, ahead of build/gen: fewer ROM machines
+BT_ROM_BUDGET = roms.BUDGET - 32 * 1024  # the Bluetooth stack's room
 
 
 def targets(cfg):
@@ -112,6 +117,22 @@ def targets(cfg):
           fw=FW,
           ldr=LDR,
           defines=cfg["defines"],
+        )
+      )
+      continue
+    if board == "fm1bt":
+      defines = [d if not d.startswith("-DFOMA_BLUETOOTH=") else "-DFOMA_BLUETOOTH=1" for d in cfg["defines"]]
+      out.append(
+        dict(
+          board="fm1",
+          model="FM-1 BT",
+          product=cfg["product"],
+          pkg=f"{cfg['file']}-bt-{cfg['version']}.fwsc",
+          site="firmware-bt.fwsc",
+          fw=OUT / "fm1bt",
+          ldr=OUT / "fm1bt" / "loader",
+          defines=defines,
+          includes=[f"-I{GEN_BT.relative_to(ROOT)}"],
         )
       )
       continue
@@ -168,7 +189,7 @@ def config():
   bad = sorted(set(opts) - set(OPTIONS))
   if bad:
     raise BuildError(f"firmware.json: unknown option {', '.join(bad)} (there are: {', '.join(OPTIONS)})")
-  c["defines"] = [f"-D{OPTIONS[k]}={int(bool(opts.get(k, True)))}" for k in OPTIONS]
+  c["defines"] = [f"-D{OPTIONS[k]}={int(bool(opts.get(k, k not in OFF_BY_DEFAULT)))}" for k in OPTIONS]
   c["boards"] = c.get("boards", ["fm1"])
   if not c["boards"] or not set(c["boards"]) <= set(BOARDS) or len(set(c["boards"])) != len(c["boards"]):
     raise BuildError(f'firmware.json: "boards" lists some of {", ".join(BOARDS)}, each once')
@@ -267,7 +288,15 @@ def build_loader(t):
 def build_app(cfg, t):
   FW = t["fw"]
   FW.mkdir(parents=True, exist_ok=True)
-  flags = [*CFLAGS, *INCLUDES, f'-DAPP_NAME="{cfg["name"]}"', f'-DAPP_VER="{cfg["version"]}"', f'-DFELUCCA_ID="{t["product"]}"', *t["defines"]]
+  flags = [
+    *CFLAGS,
+    *t.get("includes", []),
+    *INCLUDES,
+    f'-DAPP_NAME="{cfg["name"]}"',
+    f'-DAPP_VER="{cfg["version"]}"',
+    f'-DFELUCCA_ID="{t["product"]}"',
+    *t["defines"],
+  ]
   objs, cmds = [], []
   for s in [PLAT / "crt0.S", PLAT / "hal/fm1_vec.S", PLAT / "hal/fm1_isr.S"]:
     objs.append(FW / (s.stem + ".o"))
@@ -473,6 +502,9 @@ def build(dev_mode=False):
       run([sys.executable, "vendor/felucca-engines/tools/gen_engine_tables.py", rel(fe)])
     names, size = roms.generate(ROOT / "roms", OUT / "gen" / "roms.h")
     log.append(f"roms      {' '.join(names) or 'none (offline?)'}, {size // 1024} KiB")
+    if "fm1bt" in cfg["boards"]:
+      names, size = roms.generate(ROOT / "roms", GEN_BT / "roms.h", BT_ROM_BUDGET)
+      log.append(f"roms (BT) {' '.join(names) or 'none (offline?)'}, {size // 1024} KiB")
     try:
       n = build_wasm(cfg)
       info["wasm"] = True

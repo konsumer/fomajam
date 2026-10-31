@@ -55,7 +55,7 @@ typedef struct {
   uint8_t lights;         /* the keys' backlight: 0 off, 1 low, 2 full (was padding: a saved song has 0) */
   pattern_t pat[PATTERNS]; /* here since version 8 (8 of them before, between track[] and rsize) */
   /* (added in version 9: a version 8 song loads without them) */
-  uint8_t midiin;          /* MIDI in from: 0 USB and TRS, MIDI_USB, MIDI_TRS */
+  uint8_t midiin;          /* MIDI in from: 0 all, MIDI_USB, MIDI_TRS, 3 Bluetooth (the fm1bt build) */
   uint8_t sync;            /* 1: follow MIDI clock in (and start / continue / stop) */
   uint8_t selch;           /* the channel that plays the selected track: 0 none, else 1 + it */
   uint8_t rxch[TRACKS];    /* the channel each track hears: 0 none, else 1 + it */

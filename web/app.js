@@ -43,9 +43,11 @@ async function pollBuild() {
   $('buildlog').hidden = b.ok || !DEV
   $('buildlog-title').textContent = b.wasm ? 'The emulator runs, but the FM-1 build failed' : 'Build failed'
   $('buildlog-text').textContent = b.log
-  const models = Object.keys(b.packages || {})
+  const models = Object.keys(b.packages || {}).filter((m) => m !== 'FM-1 BT')
   $('pkginfo').textContent = b.fwsc ? `${b.name} ${b.version}, identity ${b.identity}${models.length > 1 ? `. For: ${models.join(', ')} (it picks the one for the connected device)` : ''}` : 'The FM-1 package did not build (see the build log).'
   $('install').disabled = !b.fwsc || busy
+  $('btbox').hidden = !(b.packages && b.packages['FM-1 BT'])
+  $('installbt').disabled = $('btbox').hidden || busy
   storeKey = `fm1-settings-${b.name}`
   if (b.wasm && !first) reload()
 }
@@ -495,6 +497,7 @@ addEventListener('beforeunload', (e) => {
 function setBusy(b) {
   busy = b
   $('install').disabled = b || !(build && build.fwsc)
+  $('installbt').disabled = b || !(build && build.packages && build.packages['FM-1 BT'])
   $('installother').disabled = $('resumeother').disabled = b || !other
   $('installstock').disabled = b || !stock
   $('resume').disabled = $('check').disabled = b
@@ -566,6 +569,12 @@ async function run(getPkg, { isStock = false, resumeOnly = false } = {}) {
 }
 
 $('install').addEventListener('click', () => run(ownPackage))
+$('installbt').addEventListener('click', () =>
+  run((model) => {
+    if (model !== 'FM-1') throw new Error(`the Bluetooth MIDI version is for the FM-1 only (this is an ${model})`)
+    return ownPackage('FM-1 BT')
+  })
+)
 $('installother').addEventListener('click', () => other && run(async () => other))
 $('installstock').addEventListener('click', () => stock && run(async () => stock, { isStock: true }))
 $('resume').addEventListener('click', () => run(ownPackage, { resumeOnly: true }))
