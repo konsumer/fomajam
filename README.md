@@ -322,8 +322,7 @@ The FM-1's controls are on the SMK-37's panel, so everything above applies:
 | `SAVE`         | BT                                                                       |
 | `PLAY` / `REC` | SEQ PLAY / SEQ REC                                                       |
 | `OCT-/OCT+`    | OCTAVE- / OCTAVE+                                                        |
-| the 27 keys    | the middle 27 keys (F3–G5)                                               |
-| the white keys | also the 16 pads, top row first: on PATTERN, the steps                   |
+| the white keys | the 16 pads, top row first: on PATTERN, the steps                        |
 
 A fader takes over once you move it (also after a page, track or bank change), so nothing jumps. And what only the
 SMK-37 has:
@@ -331,14 +330,16 @@ SMK-37 has:
 | SMK-37        | What it does                                                                                                     |
 | ------------- | ---------------------------------------------------------------------------------------------------------------- |
 | keys and pads | play with velocity (the keys use the keyboard's own factory calibration)                                         |
+| the keys      | all 37 play (OCTAVE-/+ shift them), on every page. With REC they record, as the FM-1's keys do                   |
 | PITCH wheel   | bends the chosen track ±2 semitones; on a MIDI track it sends pitch bend                                         |
 | MOD wheel     | vibrato on the chosen track; on a MIDI track it sends CC 1                                                       |
 | FADER BANK    | makes the faders a mixer: the levels of tracks 1–4, then 5–8, then 9, then back to the screen (lit while mixing) |
 | `<` / `>`     | the pattern before or after (playing, it plays when the current one ends)                                        |
 | pad colors    | the screen's: steps in their track or drum-voice color, the playhead white, the MIX page in track colors         |
 
-The black keys' lights (the tracks on the PATTERN page) have no place on the SMK-37. Not used yet: ARP (there is no
-arpeggiator), the outer 10 keys and the pedal. The SMK-37 has no MIDI in on its TRS jack, so MIDI in is USB only.
+The keyboard is apart from the FM-1's keys (the pads), so on PATTERN and MIX the keys play instead of picking steps,
+mutes or tracks (K2 picks the track). On a drum track the middle 27 keys (F3–G5) play the voices. Not used yet: ARP
+(there is no arpeggiator) and the pedal. The SMK-37 has no MIDI in on its TRS jack, so MIDI in is USB only.
 
 The SMK-37 build has not been tested on a keyboard yet. It uses the hardware map and board code of the
 [SMK-37 port kit](https://github.com/genkigenki/fm1-to-smk37) (genkigenki), which other FM-1 firmwares run on, and it

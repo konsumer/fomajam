@@ -1610,6 +1610,30 @@ static void keys_play(void) {
   }
 }
 
+#if FOMA_SMK37
+/* the SMK-37's keybed (its note keys are the pads): it plays on every page, and with REC records as the keys do.
+ * A drum track: the middle 27 keys play its voices, as the FM-1's keys do */
+static void keys_keybed(void) {
+  static uint8_t held[KEYBED_COUNT], held_t[KEYBED_COUNT];
+  int base = KEY_FIRST_NOTE - KEYBED_F3 + 12 * octave;
+  for (int k = 0; k < KEYBED_COUNT; k++) {
+    if (keybed_pressed(k)) {
+      if (is_synth(track)) {
+        held[k] = (uint8_t)(base + k);
+        held_t[k] = (uint8_t)track;
+        play(track, held[k], keybed_velocity(k));
+      } else if (k >= KEYBED_F3 && k < KEYBED_F3 + KEY_COUNT && key_voice(track, k - KEYBED_F3) >= 0) {
+        play(track, key_voice(track, k - KEYBED_F3), keybed_velocity(k));
+      }
+    }
+    if (keybed_released(k) && held[k]) {
+      live_off(held_t[k], held[k]);
+      held[k] = 0;
+    }
+  }
+}
+#endif
+
 /* ---- MIDI controllers (CC.md): channels 1..9 set tracks 1..9, channel 10 the track chosen, channel 16 the song.
  * A CC's 0..127 covers the parameter's whole range. With CC OUT on, a change made here is sent back, so a
  * controller's lights follow (not what came in: no echo) */
@@ -2459,6 +2483,9 @@ void loop(void) {
   } else {
     keys_play();
   }
+#if FOMA_SMK37
+  keys_keybed();
+#endif
   midi_in();
   wheels();
   faders();

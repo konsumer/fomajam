@@ -25,8 +25,8 @@
  * and runs one ADC conversion (read in the next tick). A frame = 16 ticks = 1.6 ms: keys, buttons,
  * encoders and LEDs are processed once per frame. Analog: 8 mux addresses x 3 channels = 24 ticks.
  *
- * Notes: the middle 27 keys (keybed 5..31, F3..G5) are the FM-1's 27 note keys. The 16 pads are the
- * FM-1's 16 white keys in reading order: top row (hardware pads 0..7) white keys 0..7, bottom row 8..15.
+ * Notes: the 16 pads are the FM-1's 16 white keys (its note keys) in reading order: top row (hardware pads
+ * 0..7) white keys 0..7, bottom row 8..15. The keybed (37 keys, C3..C6) is apart: fm1_input_keybed().
  * Key velocity: the stock two-contact algorithm with the unit's factory curves (smk_trim_load). */
 #pragma once
 #include <stdint.h>
@@ -54,7 +54,7 @@
 #define FM1_NENC 8u
 #define SMK_NPAD 16u
 #define SMK_NLED 19u
-#define SMK_KEY_F3 5u             /* keybed key 5 = F3: keys 5..31 are the FM-1's 27 note keys (bits 0..26) */
+#define SMK_KEY_F3 5u             /* keybed key 5 = F3, the FM-1's note key 0 */
 #define SMK_DEB_RELEASE 4u        /* frames open in a row: a button release (~6 ms) */
 #define SMK_DEB_PRESS 2u          /* frames closed in a row: a button press (~3 ms) */
 #define SMK_KEY_REL 3u            /* frames with contact 1 open: a key release (~5 ms) */
@@ -104,13 +104,14 @@ static uint16_t smk_trim_pad[SMK_NPAD][5], smk_trim_key[FM1_NKEY][5];
 
 /* ------------------------------------------------------------------ state --- */
 static volatile struct {
-    uint32_t notes;              /* bit n = note key n (0 = F3 .. 26 = G5): keybed keys 5..31 | the pads */
-    uint32_t knotes, pnotes;     /* (the two sources of notes) */
+    uint32_t notes;              /* bit n = note key n (0 = F3 .. 26 = G5): the pads (the keybed is apart) */
     uint32_t buttons;            /* debounced: bit i = button i (0..17) */
     uint32_t pressed, released;  /* button edges since the last fm1_input_edges() */
     uint32_t notes_pressed;      /* note-key press edges since the last fm1_input_note_edges() */
     uint64_t keys;               /* all 37 keybed keys: bit k = key k (0 = C3) */
-    uint8_t key_vel[FM1_NKEY];   /* MIDI velocity 1..127 of each key's last press (a pad: its note key's) */
+    uint64_t keys_pressed;       /* keybed press edges since the last fm1_input_keybed() */
+    uint8_t key_vel[FM1_NKEY];   /* MIDI velocity 1..127 of each keybed key's last press */
+    uint8_t note_vel[27];        /* the same for each note key (its pad) */
     uint8_t raw[FM1_NCOL];       /* last frame, rows packed, 1 = closed */
     uint8_t cnt[FM1_NBTN];       /* button debounce */
     uint8_t ks_stab[FM1_NKEY], ks_rel[FM1_NKEY];
@@ -274,21 +275,11 @@ FM1_INLINE uint32_t smk__closed(uint32_t code) { return (fm1_in.raw[code >> 4] >
 
 static void smk__key_event(uint32_t k, uint32_t vel)     /* vel 0 = release */
 {
-    if (vel)
+    if (vel) {
         fm1_in.key_vel[k] = (uint8_t)vel;
-    if (k >= SMK_KEY_F3 && k < SMK_KEY_F3 + 27u) {
-        uint32_t bit = 1u << (k - SMK_KEY_F3);
-        if (vel) {
-            fm1_in.knotes |= bit;
-            fm1_in.notes_pressed |= bit;
-        } else {
-            fm1_in.knotes &= ~bit;
-        }
-        fm1_in.notes = fm1_in.knotes | fm1_in.pnotes;
-    }
-    if (vel)
         fm1_in.keys |= (uint64_t)1u << k;
-    else
+        fm1_in.keys_pressed |= (uint64_t)1u << k;
+    } else
         fm1_in.keys &= ~((uint64_t)1u << k);
 }
 
@@ -406,13 +397,12 @@ static void smk__padq(uint32_t pad, uint32_t vel)     /* a pad hit (vel) or rele
 {
     uint32_t n = SMK_WHITE_NOTE[pad], bit = 1u << n;
     if (vel) {
-        fm1_in.key_vel[SMK_KEY_F3 + n] = (uint8_t)vel;
-        fm1_in.pnotes |= bit;
+        fm1_in.note_vel[n] = (uint8_t)vel;
+        fm1_in.notes |= bit;
         fm1_in.notes_pressed |= bit;
     } else {
-        fm1_in.pnotes &= ~bit;
+        fm1_in.notes &= ~bit;
     }
-    fm1_in.notes = fm1_in.knotes | fm1_in.pnotes;
 }
 
 static void smk__pad(uint32_t p, uint32_t raw)
@@ -571,6 +561,17 @@ static uint32_t fm1_input_note_edges(void)
     uint32_t k = fm1__lock();
     uint32_t p = fm1_in.notes_pressed;
     fm1_in.notes_pressed = 0;
+    fm1__unlock(k);
+    return p;
+}
+
+/* the keybed: the keys held now (*now) and the presses since the last call (a tap between two calls counts) */
+static uint64_t fm1_input_keybed(uint64_t *now)
+{
+    uint32_t k = fm1__lock();
+    uint64_t p = fm1_in.keys_pressed;
+    *now = fm1_in.keys;
+    fm1_in.keys_pressed = 0;
     fm1__unlock(k);
     return p;
 }
