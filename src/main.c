@@ -291,18 +291,18 @@ static int nearest_voice(int m, int v) { /* the voice of machine m nearest v tha
 }
 
 static int subpages(void) {
-  return page == PG_GLOBAL ? 3 : page == PG_FX       ? 4
-                             : page != PG_SOUND      ? 1
-                             : engine_of(track) >= 0 ? 5
-                             : is_midi(track)        ? 3
-                                                     : 2;
+  return page == PG_GLOBAL ? 3 + FOMA_BLUETOOTH : page == PG_FX       ? 4
+                                              : page != PG_SOUND      ? 1
+                                              : engine_of(track) >= 0 ? 5
+                                              : is_midi(track)        ? 3
+                                                                      : 2;
 }
 
 static const char *subpage_name(int i) { /* the tabs on the SOUND and GLOBAL pages */
   static const char *const DRUM[2] = {"PLAY", "MORE"}, *const SE[3] = {"ENV", "PATCH", "PLAY"}, *const MIDI[3] = {"NOTE", "CC", "CC#"},
-                           *const GLOBAL[3] = {"TEMPO", "SETUP", "MIDI"}, *const FX[4] = {"SENDS", "SPACE", "MOTION", "MASTER"};
+                           *const GLOBAL[4] = {"TEMPO", "SETUP", "MIDI", "BT"}, *const FX[4] = {"SENDS", "SPACE", "MOTION", "MASTER"};
   int e = engine_of(track);
-  return page == PG_GLOBAL ? GLOBAL[i % 3] : page == PG_FX ? FX[i & 3]
+  return page == PG_GLOBAL ? GLOBAL[i & 3] : page == PG_FX ? FX[i & 3]
                                          : e >= 0          ? (i < 2 ? synth_page(e, i) : SE[i - 2])
                                          : is_midi(track)  ? MIDI[i % 3]
                                                            : DRUM[i & 1];
@@ -318,7 +318,9 @@ static void pick_knobs(int *k) {
   static const uint8_t FX[4][4] = {{P_SEND, P_RSEND, P_CSEND, P_DUCK}, {P_DTIME, P_DFDBK, P_RSIZE, P_RDAMP}, {P_CRATE, P_CDEPTH, P_PUMP, P_NONE}, {P_FILTER, P_RESO, P_DRIVE, P_DTYPE}};
   static const uint8_t GLOBAL[3][4] = {{P_BPM, P_SWING, P_LENGTH, P_THEME}, {P_CLOCK, P_CCOUT, P_LIGHTS, P_NONE}, {P_MIDIIN, P_SYNC, P_SELCH, P_RXCH}};
   static const uint8_t MIDI[3][4] = {{P_MCH, P_PROG, P_GATE, P_VELO}, {P_CC0, P_CC1, P_CC2, P_CC3}, {P_CCN0, P_CCN1, P_CCN2, P_CCN3}};
-  const uint8_t *src = page == PG_MIX || page >= PG_SCOPE          ? MIX
+  static const uint8_t NONE[4] = {P_NONE, P_NONE, P_NONE, P_NONE}; /* (GLOBAL's BT: KNOB 1 moves its cursor) */
+  const uint8_t *src = page == PG_GLOBAL && sub == 3               ? NONE
+                       : page == PG_MIX || page >= PG_SCOPE        ? MIX
                        : page == PG_FX                             ? FX[sub & 3]
                        : page == PG_GLOBAL                         ? GLOBAL[sub % 3]
                        : is_midi(track) && page == PG_SOUND        ? MIDI[sub % 3]
@@ -687,8 +689,21 @@ static void clock_setup(void) {
 }
 
 /* the tempo: the song's, or following a clock in, the clock's (-- before one comes) */
+/* a followed clock's tempo as shown: it moves on only when the measured one is 0.7 BPM away (a Bluetooth clock's
+ * small wobble across a half BPM doesn't flicker it) */
+static uint32_t ext_bpm(void) {
+  static uint32_t shown;
+  uint32_t m = clock_bpm();
+  if (!m) {
+    shown = 0;
+  } else if (!shown || m > shown * 100u + 70u || m + 70u < shown * 100u) {
+    shown = (m + 50u) / 100u;
+  }
+  return shown;
+}
+
 static void tempo_text(char *s) {
-  uint32_t ext = (clock_bpm() + 50) / 100;
+  uint32_t ext = ext_bpm();
   if (song.sync && !ext) {
     s[0] = '-', s[1] = '-', s[2] = 0;
   } else {
@@ -1089,6 +1104,104 @@ static void put_int(char *s, int *n, int v) {
   put(s, n, d);
 }
 
+#if FOMA_BLUETOOTH
+/* Bluetooth MIDI devices: the one picked on the BLUETOOTH page (song.btdev, saved with SAVE) is connected to whenever
+ * it's around (bt_link, in loop()). A computer or phone can still connect to the FM-1 while it's not linked */
+static int bt_picked(void) {
+  return song.btdev[0] | song.btdev[1] | song.btdev[2] | song.btdev[3] | song.btdev[4] | song.btdev[5] || song.btname[0];
+}
+static int bt_linked(bt_status_t *b) { return b->ble_role && b->ble_state == BLE_READY; }
+
+/* the MIDI IN page's last line */
+static void draw_bt(void) {
+  static const char *const ST[] = {"OFF", "OFF", "WAITING", "LOOKING", "CONNECTING", "CONNECTING", "CONNECTED", "CONNECTED", "OFF"};
+  bt_status_t b;
+  char s[40];
+  int n = 0;
+  bt_status(&b);
+  s[0] = 0;
+  put(s, &n, "BT ");
+  put(s, &n, ST[b.ble_state < 9 ? b.ble_state : 0]);
+  if (bt_linked(&b) && song.btname[0]) {
+    put(s, &n, ": ");
+    put(s, &n, song.btname);
+  }
+  rect(0, 164, SCREEN_W, 16, th->bg);
+  text(8, 164, s, b.ble_state == BLE_READY ? th->accent : th->dim, FONT_SMALL);
+}
+
+/* GLOBAL's BT tab: the BLE MIDI devices around (it looks for them while it's shown), KNOB 1 moves the cursor, OCT+
+ * picks the device under it, OCT- forgets the one picked */
+#define BT_ROWS 4
+static int bt_tab(void) { return page == PG_GLOBAL && sub == 3; }
+static int bt_cur;
+static void draw_btpage(int all) {
+  static uint32_t shown = ~0u;
+  bt_status_t b;
+  char nm[25], s[48];
+  int rssi, n = 0, count = 0, mine;
+  uint32_t sig;
+  bt_status(&b);
+  for (count = 0; count < 16 && ble_device(count, nm, 0) == 0; count++) {
+  }
+  if (bt_cur >= count) {
+    bt_cur = count ? count - 1 : 0;
+  }
+  mine = bt_picked() ? ble_find(song.btdev, song.btrand, song.btname) : -1;
+  sig = (uint32_t)b.ble_state | (uint32_t)count << 4 | (uint32_t)bt_cur << 9 | (uint32_t)(mine + 1) << 14 | (uint32_t)bt_picked() << 19;
+  if (!all && sig == shown) {
+    return;
+  }
+  shown = sig;
+  rect(0, BODY_Y, SCREEN_W, 158 - BODY_Y, th->bg);
+  s[0] = 0;
+  if (!bt_picked()) {
+    put(s, &n, "NO DEVICE PICKED");
+  } else {
+    put(s, &n, bt_linked(&b) ? "CONNECTED: " : b.ble_state == BLE_CONNECTING || b.ble_state == BLE_DISCOVERING ? "CONNECTING: "
+                                                                                                               : "LOOKING FOR: ");
+    put(s, &n, song.btname[0] ? song.btname : "?");
+  }
+  text(8, 30, s, bt_linked(&b) ? th->accent : th->text, FONT_SMALL);
+  if (!count) {
+    text(8, 56, b.ble_state == BLE_SCANNING ? "LOOKING FOR BT MIDI..." : "NOTHING FOUND YET", th->dim, FONT_SMALL);
+  }
+  for (int i = bt_cur < BT_ROWS ? 0 : bt_cur - BT_ROWS + 1, row = 0; i < count && row < BT_ROWS; i++, row++) {
+    int y = 52 + row * 18, bars;
+    ble_device(i, nm, &rssi);
+    bars = (rssi + 100) / 20;
+    if (i == bt_cur) {
+      rect(0, y - 2, SCREEN_W, 17, th->accent);
+    }
+    uint16_t c = i == bt_cur ? th->bg : i == mine ? th->accent
+                                                  : th->text;
+    text(8, y, i == mine ? "*" : " ", c, FONT_SMALL);
+    text(20, y, nm, c, FONT_SMALL);
+    for (int k = 0; k < 3; k++) { /* the signal: three bars */
+      rect(212 + k * 7, y + 10 - 3 * k, 5, 3 + 3 * k, k < bars ? c : (i == bt_cur ? th->bg : th->dim));
+    }
+  }
+  text(8, 128, bt_picked() ? "OCT+ CONNECT   OCT- FORGET" : count ? "KNOB 1 MOVE   OCT+ CONNECT"
+                                                                  : "",
+       th->dim, FONT_SMALL);
+  if (all) {
+    draw_tabs();
+  }
+}
+
+static void bt_turn(int d) { /* KNOB 1 on the BLUETOOTH page */
+  if (d) {
+    bt_cur += d > 0 ? 1 : -1;
+    bt_cur = bt_cur < 0 ? 0 : bt_cur;
+    draw_btpage(0);
+  }
+}
+#else
+static void draw_bt(void) {}
+static void draw_btpage(int all) { (void)all; }
+static int bt_tab(void) { return 0; }
+#endif
+
 static void draw_midi(int all) {
   static uint32_t shown = ~0u;
   if (!all && shown == mlog_n) {
@@ -1101,18 +1214,10 @@ static void draw_midi(int all) {
     text(8, 50, "CH 1-9: TRACKS 1-9", th->dim, FONT_SMALL);
     text(8, 70, "CH 10: SELECTED TRACK", th->dim, FONT_SMALL);
     text(8, 90, "CH 16: SONG (CC.md)", th->dim, FONT_SMALL);
-#if FOMA_BLUETOOTH
-    {
-      static const char *const ST[] = {"OFF", "OFF", "WAITING", "OFF", "CONNECTING", "CONNECTING", "CONNECTING", "CONNECTED", "OFF"};
-      bt_status_t b;
-      bt_status(&b);
-      text(8, 120, "BLUETOOTH:", th->dim, FONT_SMALL);
-      text(8 + text_width("BLUETOOTH: ", FONT_SMALL), 120, ST[b.ble_state < 9 ? b.ble_state : 0], b.ble_state == BLE_READY ? th->accent : th->text, FONT_SMALL);
-    }
-#endif
+    draw_bt();
     return;
   }
-  int lines = mlog_n < MLOG ? (int)mlog_n : MLOG;
+  int lines = mlog_n < MLOG - FOMA_BLUETOOTH ? (int)mlog_n : MLOG - FOMA_BLUETOOTH; /* (Bluetooth: the last line's) */
   for (int k = 0; k < lines; k++) {
     const uint8_t *m = mlog[(mlog_n - lines + k) % MLOG];
     int ch = m[0] & 15, kind = m[0] & 0xF0, n = 0;
@@ -1152,6 +1257,7 @@ static void draw_midi(int all) {
     text(8, 28 + k * 17, s, k == lines - 1 ? c : th->dim, FONT_SMALL);
     rect(2, 32 + k * 17, 3, 9, c);
   }
+  draw_bt();
 }
 
 /* ---- GLOBAL: the tempo, the theme, the load */
@@ -1173,8 +1279,13 @@ static void draw_cpu(void) { /* how much of the time the sound takes (on the FM-
 #endif
 }
 
+static void draw_btpage(int all);
 static void draw_global(void) {
   char s[16];
+  if (sub == 3) { /* BT: the Bluetooth MIDI devices */
+    draw_btpage(1);
+    return;
+  }
   rect(0, BODY_Y, SCREEN_W, BODY_H, th->bg);
   tempo_text(s);
   text(8, 30, s, th->accent, FONT_BIG);
@@ -1774,7 +1885,16 @@ static void note_steps(pattern_t *p, int t, const uint8_t *notes, const char *s)
   }
 }
 
+static void bt_defaults(void) { /* no Bluetooth device picked (version 10's fields) */
+  for (int i = 0; i < 6; i++) {
+    song.btdev[i] = 0;
+  }
+  song.btrand = 0;
+  song.btname[0] = 0;
+}
+
 static void midi_defaults(void) { /* channels 1..9: tracks 1..9; 10: the track chosen */
+  bt_defaults();
   song.midiin = 0;
   song.sync = 0;
   song.selch = 10;
@@ -1847,6 +1967,8 @@ static void default_song(void) {
 }
 
 static void sanitize(void) {
+  song.btrand &= 1u;
+  song.btname[sizeof song.btname - 1] = 0;
   for (int id = 0; id < PARAMS; id++) { /* each saved value back into its range */
     for (int t = 0; t < TRACKS; t++) {
       int was = track;
@@ -1928,7 +2050,10 @@ void setup(void) {
   }
   drums_store(); /* (before the song: its USER steps) */
   if (settings_load(&song, sizeof song) || song.version != SONG_VERSION) {
-    if (!settings_load(&song, SONG8_SIZE) && song.version == 8) { /* the same, without the MIDI in settings */
+    if (!settings_load(&song, SONG9_SIZE) && song.version == 9) { /* the same, without the Bluetooth device */
+      song.version = SONG_VERSION;
+      bt_defaults();
+    } else if (!settings_load(&song, SONG8_SIZE) && song.version == 8) { /* the same, without the MIDI in settings */
       song.version = SONG_VERSION;
       midi_defaults();
     } else if (load_old()) {
@@ -1968,7 +2093,8 @@ void store_done(void) {
 /* a song of any version this one loads; it's then the song, and saved */
 int share_put(const void *p, uint32_t n) {
   const uint8_t *b = p;
-  int v = n == sizeof song ? SONG_VERSION : n == SONG8_SIZE ? 8
+  int v = n == sizeof song ? SONG_VERSION : n == SONG9_SIZE ? 9
+                                        : n == SONG8_SIZE   ? 8
                                         : n == SONG7_SIZE   ? 7
                                         : n == SONG6_SIZE   ? 6
                                                             : 0;
@@ -1984,10 +2110,12 @@ int share_put(const void *p, uint32_t n) {
   if (v < 8) {
     old_layout(v);
   }
-  if (v < SONG_VERSION) {
-    song.version = SONG_VERSION;
+  if (v < 9) {
     midi_defaults();
+  } else if (v < SONG_VERSION) {
+    bt_defaults();
   }
+  song.version = SONG_VERSION;
   sanitize();
   clock_setup();
   engine_tempo();
@@ -2127,17 +2255,74 @@ void loop(void) {
   static uint16_t hits_seen[TRACKS];
   uint32_t now = millis();
 #if FOMA_BLUETOOTH
-  { /* Bluetooth MIDI: always on in this build; the MIDI IN page says how it's doing */
-    static uint8_t on, said = 0xFF;
+  { /* Bluetooth MIDI: always on in this build. The device picked on the BLUETOOTH page is connected to whenever it's
+     * around: while not linked, the FM-1 looks for it (3 s, every 5 s) and connects; a link not made in 5 s is left and
+     * it looks again. The BLUETOOTH page looks all the time, for its list. The MIDI IN page says how it's doing */
+    static uint8_t on, said = 0xFF, linking;
+    static uint32_t scan_at, conn_at;
     bt_status_t b;
     if (!on && bt_enable(BT_MIDI) == 0) {
       on = 1;
     }
     bt_status(&b);
+    int want = on && bt_picked();
+    if (want != linking) { /* (picked or forgotten) */
+      linking = (uint8_t)want;
+      ble_central(want);
+      scan_at = now - 10000u;
+    }
+    int list = on && bt_tab() && !bt_linked(&b);
+    if ((want || list) && b.ble_state == BLE_ADVERTISING && (list || now - scan_at > 5000u) && ble_scan() == 0) {
+      scan_at = now;
+    } else if (want && b.ble_state == BLE_SCANNING && (list || now - scan_at > 3000u)) {
+      int i = ble_find(song.btdev, song.btrand, song.btname);
+      if (i >= 0 && ble_connect(i) == 0) {
+        conn_at = scan_at = now;
+      }
+    } else if (want && (b.ble_state == BLE_CONNECTING || b.ble_state == BLE_DISCOVERING) && now - conn_at > 5000u) {
+      ble_disconnect(); /* (not linked in 5 s: it went, or won't have us; look again) */
+      scan_at = now - 5001u;
+    }
+    if (bt_tab() && button_pressed(BTN_OCT_DOWN) && bt_picked()) { /* forget the one picked */
+      if (b.ble_role && b.ble_state != BLE_ADVERTISING && b.ble_state != BLE_SCANNING) {
+        ble_disconnect();
+      }
+      bt_defaults();
+      dirty = 1;
+      toast("FORGOTTEN: SAVE KEEPS IT");
+      draw_btpage(1);
+    }
+    if (bt_tab() && button_pressed(BTN_OCT_UP)) { /* pick the device under the cursor */
+      uint8_t a[6];
+      int r;
+      char nm[25];
+      if (ble_device(bt_cur, nm, 0) == 0 && ble_device_addr(bt_cur, a, &r) == 0) {
+        if (b.ble_role && b.ble_state != BLE_ADVERTISING && b.ble_state != BLE_SCANNING) {
+          ble_disconnect(); /* (from the one before) */
+        }
+        for (int k = 0; k < 6; k++) {
+          song.btdev[k] = a[k];
+        }
+        song.btrand = (uint8_t)(r != 0);
+        for (int k = 0; k < (int)sizeof song.btname; k++) {
+          song.btname[k] = k < (int)sizeof song.btname - 1 ? nm[k] : 0;
+          if (!nm[k]) {
+            break;
+          }
+        }
+        dirty = 1;
+        scan_at = now - 10000u;
+        toast("PICKED: SAVE KEEPS IT");
+        draw_btpage(1);
+      }
+    }
+    if (bt_tab()) {
+      draw_btpage(0);
+    }
     if (b.ble_state != said) {
       said = b.ble_state;
-      if (page == PG_MIDI && !mlog_n) {
-        draw_midi(1);
+      if (page == PG_MIDI) {
+        draw_bt();
       }
     }
   }
@@ -2239,7 +2424,7 @@ void loop(void) {
       stopped_at = now - 1000;
     }
   }
-  int oct = ask_until || answered ? octave : octave + button_pressed(BTN_OCT_UP) - button_pressed(BTN_OCT_DOWN);
+  int oct = ask_until || answered || bt_tab() ? octave : octave + button_pressed(BTN_OCT_UP) - button_pressed(BTN_OCT_DOWN);
   if (oct != octave && oct >= -3 && oct <= 2) {
     char s[16] = "OCTAVE ";
     octave = oct;
@@ -2257,6 +2442,12 @@ void loop(void) {
   }
   turn(P_BPM, ENC_ALGORITHM);
   for (int k = 0; k < 4; k++) {
+#if FOMA_BLUETOOTH
+    if (bt_tab() && k == 0) {
+      bt_turn(encoder(ENC_KNOB1));
+      continue;
+    }
+#endif
     turn(knobs[k], ENC_KNOB1 + k);
   }
 
@@ -2300,7 +2491,7 @@ void loop(void) {
     }
   }
   static uint32_t tempo_drawn, tempo_at;
-  uint32_t ext = (clock_bpm() + 50) / 100;
+  uint32_t ext = ext_bpm();
   if (song.sync && ext != tempo_drawn && (now - tempo_at > 250 || !ext)) { /* following a clock: its tempo */
     tempo_drawn = ext;
     tempo_at = now;
@@ -2325,7 +2516,7 @@ void loop(void) {
     draw_transport();
   }
   static uint32_t cpu_at;
-  if (page == PG_GLOBAL && now - cpu_at > 500) {
+  if (page == PG_GLOBAL && !bt_tab() && now - cpu_at > 500) {
     cpu_at = now;
     draw_cpu();
   }

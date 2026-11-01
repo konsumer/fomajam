@@ -6,7 +6,7 @@
 #define TRACKS 9 /* each plays one machine: a drum machine, or a synth engine */
 #define STEPS 16
 #define PATTERNS 40 /* as many as fit the settings */
-#define SONG_VERSION 9
+#define SONG_VERSION 10
 
 /* a step: what plays (a drum machine's voice, or a synth's MIDI note) and how */
 #define STEP_ON 1
@@ -59,10 +59,16 @@ typedef struct {
   uint8_t sync;            /* 1: follow MIDI clock in (and start / continue / stop) */
   uint8_t selch;           /* the channel that plays the selected track: 0 none, else 1 + it */
   uint8_t rxch[TRACKS];    /* the channel each track hears: 0 none, else 1 + it */
+  /* (added in version 10: a version 9 song loads without them) */
+  uint8_t btdev[6];        /* the Bluetooth MIDI device picked on the BLUETOOTH page (its address, least significant
+                            * octet first; all 0: none): the FM-1 connects to it whenever it's around */
+  uint8_t btrand;          /* its address is random */
+  char btname[17];         /* its name, to find it again when its address changes (a Mac's, an iPhone's) */
 } song_t;
 
 _Static_assert(sizeof(song_t) <= SETTINGS_MAX, "the song must fit in the settings");
-_Static_assert(sizeof(song_t) == 11914, "a version 9 song is 11914 bytes: a new field needs SONG_VERSION + 1");
+_Static_assert(sizeof(song_t) == 11938, "a version 10 song is 11938 bytes: a new field needs SONG_VERSION + 1");
+#define SONG9_SIZE __builtin_offsetof(song_t, btdev)
 #define SONG8_SIZE __builtin_offsetof(song_t, midiin)
 /* the songs before: version 7 had 8 patterns after track[] and the effects after them; version 6 no effects */
 #define SONG_HEAD __builtin_offsetof(song_t, rsize)               /* up to the patterns, in every version */

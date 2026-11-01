@@ -63,15 +63,15 @@ const code = async (p) => {
 }
 
 const i = await info(link)
-assert(i && i.name === 'FOMAJAM' && i.size === 11914 && i.chunk === 512, `INFO: ${i && i.name} ${i && i.version}, ${i && i.size} bytes`)
+assert(i && i.name === 'FOMAJAM' && i.size === 11938 && i.chunk === 512, `INFO: ${i && i.name} ${i && i.version}, ${i && i.size} bytes`)
 const song = await readBlock(link)
-assert(song.length === 11914 && song[0] === 9, 'READ: a version 9 song')
+assert(song.length === 11938 && song[0] === 10, 'READ: a version 10 song')
 
 const changed = song.slice()
 changed[1] = 97 // the tempo
 await writeBlock(link, SONG, changed)
 assert((await readBlock(link))[1] === 97, 'WRITE: the changed song is the one it has')
-assert(stored().length === 11914 && stored()[1] === 97, 'WRITE: and it saved it')
+assert(stored().length === 11938 && stored()[1] === 97, 'WRITE: and it saved it')
 
 const odd = song.slice()
 odd[0] = 3
