@@ -341,8 +341,8 @@ uint32_t micros(void) { return fm1_micros(); }
  * OCTAVE- / OCTAVE+ = OCT- / OCT+, FX = FX, SCALE = SEL, CHORD = ENV, NOTE REPEAT = LFO, PARA = EDIT,
  * GLOBE = GLO, PATCH = HOME, BT = SAVE, ARP = ARP, SEQ = SEQ, SEQ PLAY = PLAY, SEQ REC = REC, and its own
  * KNOB BANK, FADER BANK, < and >. Knobs: K1 = MASTER (smk_input.h), K2 = SELECT, K3 = ALGORITHM,
- * K4 = PRESETS, K5..K8 = KNOB 1..4. Keys: the middle 27 (F3..G5). Pads: the 16 white keys, in reading
- * order (top row F3..F4, bottom row G4..G5), lit where those keys' LEDs would be. */
+ * K4 = PRESETS, K5..K8 = KNOB 1..4. Pads: the 16 white keys, in reading order (top row F3..F4, bottom row
+ * G4..G5), lit where those keys' LEDs would be. The keybed is apart (keybed_*). */
 static const uint8_t SMK_BTN_OF[BTN_COUNT] = {
     SMK_BTN_OCT_DOWN, SMK_BTN_OCT_UP, SMK_BTN_FX, SMK_BTN_SCALE, SMK_BTN_CHORD, SMK_BTN_NOTE_REPEAT,
     SMK_BTN_PARA, SMK_BTN_GLOBE, SMK_BTN_PATCH, SMK_BTN_BT, SMK_BTN_ARP, SMK_BTN_SEQ,
@@ -409,6 +409,21 @@ static void wheels(void) {
 #endif
 static uint32_t in_keys, in_kp, in_kr, in_btn, in_bp, in_br, in_master = 512;
 static int32_t in_enc[ENC_COUNT];
+#if FOMA_SMK37
+static uint64_t bed_keys, bed_kp, bed_kr;
+static void keybed_snapshot(void) {
+  uint64_t now, taps = fm1_input_keybed(&now);
+  bed_kp = taps | (now & ~bed_keys);
+  bed_kr = (bed_keys & ~now) | (taps & ~now);
+  bed_keys = now;
+}
+int keybed_pressed(int k) { return (unsigned)k < KEYBED_COUNT && (bed_kp >> k & 1u); }
+int keybed_released(int k) { return (unsigned)k < KEYBED_COUNT && (bed_kr >> k & 1u); }
+int keybed_velocity(int k) {
+  int v = (unsigned)k < KEYBED_COUNT ? fm1_in.key_vel[k] : 0;
+  return v ? v : 100;
+}
+#endif
 static void input_snapshot(void) {
   uint32_t now = fm1_in.notes, taps = fm1_input_note_edges(), rel, e;
   in_kp = taps | (now & ~in_keys);
@@ -421,6 +436,7 @@ static void input_snapshot(void) {
     in_enc[e] = fm1_enc_take(PANEL_ENC(e));
   }
 #if FOMA_SMK37
+  keybed_snapshot();
   wheels();
 #endif
 }
@@ -436,7 +452,7 @@ int32_t encoder(int e) { return (unsigned)e < ENC_COUNT ? in_enc[e] : 0; }
 uint32_t master_knob(void) { return in_master; }
 #if FOMA_SMK37
 int key_velocity(int k) {
-  int v = (unsigned)k < KEY_COUNT ? fm1_in.key_vel[SMK_KEY_F3 + (uint32_t)k] : 0;
+  int v = (unsigned)k < KEY_COUNT ? fm1_in.note_vel[k] : 0;
   return v ? v : 100;
 }
 int pitch_wheel(void) { return (int)wheel_bend; }

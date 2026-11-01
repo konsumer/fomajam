@@ -48,7 +48,15 @@ uint32_t keys(void);      /* bit k: key k held */
 int key_held(int k);
 int key_pressed(int k);
 int key_released(int k);
-int key_velocity(int k); /* 1..127: how hard key k was last played (SMK-37: its key or pad); the FM-1: always 100 */
+int key_velocity(int k); /* 1..127: how hard key k was last played (SMK-37: its pad); the FM-1: always 100 */
+
+/* ---- the SMK-37's keybed (FOMA_SMK37 only): 37 keys, C3..C6. Its note keys are the pads; the keybed is apart,
+ * and its key 5 (F3) is where note key 0 is */
+#define KEYBED_COUNT 37
+#define KEYBED_F3 5
+int keybed_pressed(int k);
+int keybed_released(int k);
+int keybed_velocity(int k); /* 1..127 */
 
 /* ---- buttons */
 enum {
