@@ -1,6 +1,6 @@
 # FOMAJAM
 
-[![FOMAJAM playing a 909 pattern in the FM-1 emulator](docs/fomajam.gif)](https://joakimeriksson.github.io/fm1-emu/?fw=fomajam)
+[![FOMAJAM playing a 909 pattern](docs/fomajam.gif)](https://joakimeriksson.github.io/fm1-emu/?fw=fomajam)
 
 A groovebox firmware for the M-VAVE FM-1 (and the [M-VAVE SMK-37](#m-vave-smk-37)), made with [foma](https://github.com/konsumer/foma).
 
