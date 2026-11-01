@@ -421,10 +421,10 @@ def lowpass(x):
   return out
 
 
-def prepare(x, rate, target):
-  x = x[: int(rate * MAX_SECONDS)]
+def prepare(x, rate, target, max_seconds=MAX_SECONDS):
+  x = x[: int(rate * max_seconds)]
   fade = int(rate * FADE_SECONDS)
-  if len(x) >= int(rate * MAX_SECONDS) and fade:
+  if len(x) >= int(rate * max_seconds) and fade:
     for i in range(fade):
       x[-fade + i] *= 1 - i / fade
   peak = max(1.0, max(abs(v) for v in x))
@@ -566,10 +566,10 @@ def encode(x):
   return bytes(codes[i] | codes[i + 1] << 4 for i in range(0, len(codes), 2)), idx0
 
 
-def generate(cache, out, budget=BUDGET):
-  """the ROM machines' header at out: MACHINES in order, as many as fit in budget bytes"""
+def generate(cache, out, budget=BUDGET, max_seconds=MAX_SECONDS):
+  """the ROM machines' header at out: MACHINES in order, as many as fit in budget bytes, each sound cut at max_seconds"""
   stamp = Path(out).with_suffix(".stamp")  # the same table and code as last time: the same header
-  key = hashlib.sha1((Path(__file__).read_text() + (Path(__file__).parent / "drums.py").read_text() + str(budget)).encode()).hexdigest()
+  key = hashlib.sha1((Path(__file__).read_text() + (Path(__file__).parent / "drums.py").read_text() + str(budget) + str(max_seconds)).encode()).hexdigest()
   if Path(out).exists() and stamp.exists() and stamp.read_text().split("\n")[0] == key:
     names, total = stamp.read_text().split("\n")[1:3]
     return names.split(), int(total)
@@ -580,7 +580,7 @@ def generate(cache, out, budget=BUDGET):
     except OSError as e:
       print(f"roms: {name} left out ({e})", file=sys.stderr)
       continue
-    enc = {v: (encode(x), rate) for v, (x, rate) in ((v, prepare(x, r, drums.TARGET[v])) for v, (x, r) in got.items())}
+    enc = {v: (encode(x), rate) for v, (x, rate) in ((v, prepare(x, r, drums.TARGET[v], max_seconds)) for v, (x, r) in got.items())}
     size = sum(len(d) for (d, _), _ in enc.values())
     if total + size > budget:
       left.append(name)

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// A fomajam song (src/groove.h, version 9: what fm1share.js reads as block 0) as Standard MIDI Files, one for each
+// A fomajam song (src/groove.h, version 10 or 9: what fm1share.js reads as block 0) as Standard MIDI Files, one for each
 // pattern with steps in it, for a DAW or another sequencer. fm1buddy makes the same files.
 //
 // Each track with steps is a MIDI track: drum tracks on channel 10 with General MIDI drum notes (as the firmware takes
@@ -9,8 +9,7 @@
 // The tempo and swing are the song's; muted tracks are left out.
 
 const PPQ = 96 // a 16th: 24 ticks
-const VERSION = 9
-const SIZE = 11914
+const SIZES = { 9: 11914, 10: 11938 } // (10 added the Bluetooth device after the rest: the same layout before it)
 const TRACKS = 9
 const STEPS = 16
 const PATTERNS = 40
@@ -27,7 +26,7 @@ const GM = [36, 35, 38, 40, 37, 39, 41, 45, 48, 42, 46, 49, 51, 56, 68, 54, 64, 
 
 // the song's own: { bpm, swing, length, mute, tracks: [{ voice, gate }], pat(p, t, s) -> { val, flag } }, or null
 export function readSong(b) {
-  if (b.length !== SIZE || b[0] !== VERSION) return null
+  if (b.length !== SIZES[b[0]]) return null
   return {
     bpm: b[1],
     swing: b[2],
@@ -76,7 +75,7 @@ export function drumTracks(song) {
 // pattern p as a Standard MIDI File (type 1), or null when it has no steps on
 export function patternMidi(bytes, p) {
   const song = readSong(bytes)
-  if (!song) throw new Error('not a fomajam song this knows (version 9)')
+  if (!song) throw new Error('not a fomajam song this knows (version 9 or 10)')
   const drums = drumTracks(song)
   // when step s starts, and how long it is (swing: the odd ones late)
   const even = Math.round((2 * 24 * (200 + song.swing)) / 400)

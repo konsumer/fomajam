@@ -171,9 +171,10 @@ uint32_t clock_bpm(void);                   /* BPM x 100: its tempo, or the foll
 #endif
 
 #if FOMA_BLUETOOTH
-/* ---- Bluetooth MIDI (bluetooth). Off until bt_enable(BT_MIDI) (from loop()): the FM-1 shows up as a BLE MIDI device
- * phones and computers connect to. MIDI from it comes in through midi_read (MIDI_BLE), and midi_send goes out over
- * it too. Pass 0 to switch it off (the link ends, advertising stops) */
+/* ---- Bluetooth MIDI (bluetooth). Off until bt_enable(BT_MIDI) (from loop()). Phones and computers connect to the FM-1
+ * (it shows up as a BLE MIDI device), or it connects to one itself (a controller, another FM-1): ble_scan() (15 s of
+ * looking), then ble_device() / ble_connect(). One link at a time, no pairing. MIDI from it comes in through midi_read
+ * (MIDI_BLE), and midi_send goes out over it too. bt_enable(0) switches it off (the link ends, advertising stops) */
 enum { BT_AUDIO = 1,
        BT_MIDI = 2 };
 enum { BLE_OFF,
@@ -193,11 +194,14 @@ typedef struct {
 } bt_status_t;
 int bt_enable(int features); /* BT_MIDI, 0 off */
 void bt_status(bt_status_t *s);
-int ble_central(int on); /* (not here: these answer "not ready") */
-int ble_scan(void);
-int ble_device(int i, char name[25], int *rssi);
+int ble_central(int on);                                           /* 1: you mean to connect out (bt_status's ble_role) */
+int ble_scan(void);                                                /* 15 s of looking for BLE MIDI devices */
+int ble_device(int i, char name[25], int *rssi);                   /* 0: device i of the scan (rssi: rough, larger is nearer) */
+int ble_device_addr(int i, uint8_t addr[6], int *random);          /* 0: device i's address (least significant octet first) */
+int ble_find(const uint8_t addr[6], int random, const char *name); /* the scan's index of that device (by address, else
+                                                                    * by name when name is not empty), -1: not seen */
 int ble_connect(int i);
-int ble_disconnect(void);
+int ble_disconnect(void); /* leave the device we connected to (a computer connected to us stays) */
 int ble_forget(void);
 const int32_t *bt_audio_in(void);
 #endif

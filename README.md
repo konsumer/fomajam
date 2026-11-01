@@ -40,7 +40,7 @@ bar**. The knob bar shows what KNOB1–4 do on the current page, always in the s
 | `HOME`       | SCOPE             | play the track                                                                   | LEVEL, DELAY, REVERB, MUTE (the MIX knobs). SCOPE shows the output.                                                                      |
 | `HOME` again | MIX, then MIDI IN | MIX: white keys mute tracks 1–9, black keys pick tracks; MIDI IN: play the track | the same. MIDI IN lists the last messages that came in. `HOME` once more goes back to SCOPE.                                             |
 | `FX`         | FX                | play the track                                                                   | 4 pages (press `SEL`): see [Effects](#effects)                                                                                           |
-| `GLO`        | GLOBAL            | play the track                                                                   | TEMPO page: BPM, SWING, LENGTH, THEME; SETUP page: CLOCK, CC OUT, LIGHTS; MIDI page: MIDI IN, SYNC, SEL CH, TRK CH. Also shows CPU load. |
+| `GLO`        | GLOBAL            | play the track                                                                   | TEMPO page: BPM, SWING, LENGTH, THEME; SETUP page: CLOCK, CC OUT, LIGHTS; MIDI page: MIDI IN, SYNC, SEL CH, TRK CH; BT page (Bluetooth version): the Bluetooth MIDI device to connect to. Also shows CPU load. |
 
 **Playing the keys:** on a synth track, the keys are a keyboard. On a drum track, they play the machine's kit: the
 white keys are BD SD CH OH CP RS LT MT HT CY RD CB TB MA CL TI, and the black keys are BD2 SD2 CB2 and the congas. (On
@@ -200,17 +200,34 @@ Pick one source in `MIDI IN` when both send clock.
 There's a second FM-1 package with Bluetooth MIDI: `fomajam-bt-VERSION.fwsc` (on the install page, **Install with
 Bluetooth MIDI**). A phone, tablet or computer connects to it as a Bluetooth MIDI device, `FOMAJAM` and four hex
 digits, and everything above works over it: playing the tracks, the CCs, MIDI out, and the clock both ways (`SYNC`
-on `EXT` follows a clock from Bluetooth, `CLOCK` sends one). Set `MIDI IN` to `BT` to take MIDI from Bluetooth
-only. Bluetooth is always on in this version (the sound starts a moment later at power-on, while the radio starts); the MIDI IN page (`HOME` three times) says whether something is
-connected while nothing has come in yet.
+on `EXT` follows a clock from Bluetooth, `CLOCK` sends one). Bluetooth is always on in this version (the sound starts
+a moment later at power-on, while the radio starts).
 
-To make room it leaves out one ROM machine (ACE); your own [kits](#kits) still load as before. On a Mac: Audio MIDI
-Setup, Window > Show MIDI Studio, the Bluetooth button, then Connect. On iOS, apps that take Bluetooth MIDI connect
-from their own settings.
+Set `MIDI IN` to `BT` to take MIDI from Bluetooth only.
+
+**Connecting to a Bluetooth MIDI device:** the FM-1 can also connect out by itself, to another FM-1, a Bluetooth
+keyboard or controller, anything that shows up as a Bluetooth MIDI device. Pick it on the GLOBAL page's **BT** page
+(`GLO`, then `SEL` until `BT`): the devices around are listed, with their signal; `KNOB 1` moves the cursor, `OCT+`
+connects to the one under it, `OCT-` forgets the one picked. `SAVE` keeps it: from then on the FM-1 connects to it
+whenever it's around, and again if the link drops. The page's first line and the MIDI IN page's last line say how
+it's doing (`LOOKING FOR`, `CONNECTING`, `CONNECTED: FOMAJAM 1A2B`).
+
+To play two FM-1s together, pick one from the other, then:
+
+- the leader: `CLOCK` on, `SYNC` on `INT`, as for USB;
+- the follower: `SYNC` on `EXT`. It follows the leader's tempo, start and stop, and the leader's MIDI tracks play the
+  follower's tracks by channel, as over a cable.
+
+The link is one to one, and the FM-1 doesn't pair, so a device that insists on pairing won't connect. While it's
+linked, a computer can't connect to it.
+
+To make room it leaves out one ROM machine (ACE), and the other recordings are cut a little sooner (0.77 s instead of
+0.8 s); your own [kits](#kits) still load as before. On a Mac: Audio MIDI Setup, Window > Show MIDI Studio, the
+Bluetooth button, then Connect. On iOS, apps that take Bluetooth MIDI connect from their own settings.
 
 The Bluetooth stack is Henri David's, from [Optimist](https://github.com/w0ts/optimist), with the radio drivers of
-[felucca-bsp](https://github.com/hugelton/felucca-bsp): no pairing (Macs and iPhones connect without it), and the
-FM-1 doesn't connect out to Bluetooth controllers itself.
+[felucca-bsp](https://github.com/hugelton/felucca-bsp). The radio is set up with the FM-1's own calibration, as the
+stock firmware left it in its flash, and its own VCO bands, measured at every start.
 
 ## Samples
 
@@ -338,6 +355,10 @@ You only need Docker:
 ./fm1 flash        # install the build on the FM-1 over USB, no browser (macOS, Linux: needs python3)
 ./fm1 flash bt     # the Bluetooth MIDI version (any package the build made: bt, smk37, smk37-elite, smk37-mke)
 ./fm1 flash --id   # what the FM-1 runs now (FM-1_000: the USB rescue)
+./fm1 flash --list # every FM-1 on USB, numbered: with more than one, --port N first picks one (./fm1 flash --port 2 bt)
+./fm1 flash --crash  # the last crash it recorded (the firmware and the USB rescue answer)
+./fm1 flash --bt     # the Bluetooth version: the link, what it found around it
+./fm1 flash --radio  # the Bluetooth version: which radio calibration it started with
 ```
 
 | File                                     | What it is                                                            |
