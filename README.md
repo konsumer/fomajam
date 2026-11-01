@@ -330,7 +330,7 @@ SMK-37 has:
 | SMK-37        | What it does                                                                                                     |
 | ------------- | ---------------------------------------------------------------------------------------------------------------- |
 | keys and pads | play with velocity (the keys use the keyboard's own factory calibration)                                         |
-| the keys      | all 37 play (OCTAVE-/+ shift them). On PATTERN they also put the note in the cursor's step, and it moves on      |
+| the keys      | all 37 play (OCTAVE-/+ shift them), on every page. With REC they record, as the FM-1's keys do                   |
 | PITCH wheel   | bends the chosen track ±2 semitones; on a MIDI track it sends pitch bend                                         |
 | MOD wheel     | vibrato on the chosen track; on a MIDI track it sends CC 1                                                       |
 | FADER BANK    | makes the faders a mixer: the levels of tracks 1–4, then 5–8, then 9, then back to the screen (lit while mixing) |

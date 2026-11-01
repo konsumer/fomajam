@@ -1495,16 +1495,15 @@ static void turn(int id, int e) {
 /* ---- the keys: on PATTERN and MIX, white keys are steps / mutes and black keys tracks; else they play */
 static int8_t white_of[KEY_COUNT], black_of[KEY_COUNT];
 
-/* with REC: into the step playing, or (stopped) into the cursor's, which then moves on. step (the SMK-37's keybed
- * on PATTERN): into the cursor's step without REC too, playing or not */
-static void record(int t, int v, int vel, int step) {
-  int live = rec && playing, s = live ? play_step : cursor;
-  if (!(rec || step) || s < 0) {
+/* with REC: into the step playing, or (stopped) into the cursor's, which then moves on */
+static void record(int t, int v, int vel) {
+  int s = playing ? play_step : cursor;
+  if (!rec || s < 0) {
     return;
   }
   pat()->val[t][s] = (uint8_t)v;
   pat()->flag[t][s] = (uint8_t)(STEP_ON | (vel > 110 ? STEP_ACC : 0));
-  if (!live) {
+  if (!playing) {
     cursor = (cursor + 1) % song.length;
     draw_knobs();
   }
@@ -1515,7 +1514,7 @@ static void record(int t, int v, int vel, int step) {
 }
 
 /* a drum voice or a synth note, now; it is also what new steps get */
-static void play(int t, int v, int vel, int step) {
+static void play(int t, int v, int vel) {
   live_on(t, v, vel);
   if (song.track[t].voice != v) {
     song.track[t].voice = (uint8_t)v;
@@ -1523,7 +1522,7 @@ static void play(int t, int v, int vel, int step) {
       draw_track_chip();
     }
   }
-  record(t, v, vel, step);
+  record(t, v, vel);
 }
 
 /* the drum keys: up the white keys the usual kit, the black keys the rest; SMP: a sample a key */
@@ -1599,9 +1598,9 @@ static void keys_play(void) {
       if (is_synth(track)) {
         held[k] = (uint8_t)(base + k); /* a key stops the note it started, whatever the octave or track is now */
         held_t[k] = (uint8_t)track;
-        play(track, held[k], key_velocity(k), 0); /* (the FM-1's keys: 100) */
+        play(track, held[k], key_velocity(k)); /* (the FM-1's keys: 100) */
       } else if (key_voice(track, k) >= 0) {
-        play(track, key_voice(track, k), key_velocity(k), 0);
+        play(track, key_voice(track, k), key_velocity(k));
       }
     }
     if (key_released(k) && held[k]) {
@@ -1612,20 +1611,19 @@ static void keys_play(void) {
 }
 
 #if FOMA_SMK37
-/* the SMK-37's keybed (its note keys are the pads): it plays, as the keys do off PATTERN, wherever it is; on PATTERN
- * (without REC) it also puts its note in the cursor's step, and the cursor moves on. A drum track: the middle 27
- * keys play its voices, as the FM-1's keys do */
+/* the SMK-37's keybed (its note keys are the pads): it plays on every page, and with REC records as the keys do.
+ * A drum track: the middle 27 keys play its voices, as the FM-1's keys do */
 static void keys_keybed(void) {
   static uint8_t held[KEYBED_COUNT], held_t[KEYBED_COUNT];
-  int base = KEY_FIRST_NOTE - KEYBED_F3 + 12 * octave, step = page == PG_PATTERN && !rec;
+  int base = KEY_FIRST_NOTE - KEYBED_F3 + 12 * octave;
   for (int k = 0; k < KEYBED_COUNT; k++) {
     if (keybed_pressed(k)) {
       if (is_synth(track)) {
         held[k] = (uint8_t)(base + k);
         held_t[k] = (uint8_t)track;
-        play(track, held[k], keybed_velocity(k), step);
+        play(track, held[k], keybed_velocity(k));
       } else if (k >= KEYBED_F3 && k < KEYBED_F3 + KEY_COUNT && key_voice(track, k - KEYBED_F3) >= 0) {
-        play(track, key_voice(track, k - KEYBED_F3), keybed_velocity(k), step);
+        play(track, key_voice(track, k - KEYBED_F3), keybed_velocity(k));
       }
     }
     if (keybed_released(k) && held[k]) {
@@ -1841,7 +1839,7 @@ static void midi_note(int t, int on, int off, int d1, int d2) {
                                 18, 17, 18, 18, 16, 19, 19, 13, 14, 20, 20, -1, -1, -1, -1, 21, 21, 21, -1, -1, -1, -1};
   if (is_synth(t)) {
     if (on) {
-      play(t, d1, d2, 0);
+      play(t, d1, d2);
     } else if (off) {
       live_off(t, d1);
     }
@@ -1851,7 +1849,7 @@ static void midi_note(int t, int on, int off, int d1, int d2) {
       v = d1 - 36; /* SMP, USER: a sample a key from C */
     }
     if (v >= 0 && machine_has(machine_of(t), v)) {
-      play(t, v, d2, 0);
+      play(t, v, d2);
     }
   }
 }
