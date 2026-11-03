@@ -16,6 +16,8 @@ A groovebox firmware for the M-VAVE FM-1 (and the [M-VAVE SMK-37](#m-vave-smk-37
 
 Try it in your browser, and install it on the FM-1 from Chrome or Edge: <https://konsumer.github.io/fomajam/>
 
+It is also listed on mutant.cloud: <https://mutant.cloud/fomajam>
+
 ## Playing it
 
 Every page has the same layout: a **header** (page, track, pattern, tempo, play/stop), the **body**, and the **knob
