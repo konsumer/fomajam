@@ -65,6 +65,7 @@ static struct {
     uint8_t sx_len, sx_on;
     volatile uint8_t uboot_req;
     volatile uint8_t ota_req;    /* F0 22 24 35 7F F7: M-UPGRADE upgrade command (FELUCCA_OTA) */
+    volatile uint8_t mirror_hello; /* F0 7D 'F' 'S' n F7, a Big Screen viewer's hello (FOMA_MIRROR): 1 + n */
     uint8_t rx_pend;             /* EP1 OUT packet seen, not yet taken (the MIDI ring was too full) */
     uint32_t rx_held, rx_bad;    /* packets held back (NAK) for room, malformed events ignored */
 } usb;
@@ -456,6 +457,15 @@ static void sysex_byte(uint8_t b)
         usb.sysex[usb.sx_len++] = b;
     if (b == 0xF7) {
         uint32_t i, ok = usb.sx_len == 6u;
+#if FOMA_MIRROR
+        if (ok && usb.sysex[1] == 0x7D && usb.sysex[2] == 'F' && usb.sysex[3] == 'S') {
+            if (usb.sysex[4] < 3u)
+                usb.mirror_hello = (uint8_t)(usb.sysex[4] + 1u);   /* mirror.c */
+            sx_collect = 0;
+            usb.sx_on = 0;
+            return;
+        }
+#endif
         for (i = 0; ok && i < 6u; i++)
             ok = usb.sysex[i] == UBOOT_KEY[i];
         if (ok)
