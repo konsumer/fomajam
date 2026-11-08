@@ -735,11 +735,7 @@ void fm1_cstart(void) {
   if (boot_mode == BOOT_RECOVERY || recovery_key()) {
     recovery_main(); /* OCT- at power-on: the USB rescue */
   }
-#if FOMA_SMK37
   flash_ok = FL_JEDEC_OK(FL_FAR(fl_jedec_ram)());
-#else
-  flash_ok = FL_FAR(fl_jedec_ram)() == 0x856014u;
-#endif
   if (flash_ok) {
     fl_plain_window_init(); /* the store reads as it is (as Felucca's samples): it's not the code's encrypted flash */
   }
