@@ -83,6 +83,17 @@ static uint32_t sx_out_q[SXQ];
 static volatile uint32_t so_w, so_r;
 #endif
 
+#if FOMA_MIRROR
+/* Big Screen's SysEx packets (mirror.c fills it): they go after everything else, a whole message at a time, so a
+ * note waits at most for the end of one (24 packets, ~1.5 ms) */
+#define MRQ 512u
+static uint32_t mr_q[MRQ];
+static volatile uint32_t mq_w, mq_r;
+static uint8_t mq_mid; /* inside a message: nothing else until its end */
+#else
+#define mq_mid 0
+#endif
+
 /* MIDI rings: 4-byte USB-MIDI event packets. In: the cable nibble is where it came from (0 USB, 1 the TRS jack) */
 #define MQ 64u
 static uint32_t midi_in_q[MQ], midi_out_q[MQ];
@@ -632,7 +643,10 @@ static void ota_frame_done(void)
 static void ep1_tx(void)
 {
     uint32_t csr, n = 0;
-#if FELUCCA_OTA
+#if FELUCCA_OTA && FOMA_MIRROR
+    if (mo_w == mo_r && so_w == so_r && mq_w == mq_r)
+        return;
+#elif FELUCCA_OTA
     if (mo_w == mo_r && so_w == so_r)
         return;
 #else
@@ -646,7 +660,7 @@ static void ep1_tx(void)
     if (csr & 0x80u)
         sie_wr(S_TXCSR1, csr & ~0x80u);
 #if FELUCCA_OTA
-    while (so_r != so_w && n < 64u) {                   /* SysEx first, never split by notes */
+    while (!mq_mid && so_r != so_w && n < 64u) {        /* SysEx first, never split by notes */
         uint32_t pkt = sx_out_q[so_r % SXQ];
         ep1tx[n] = (uint8_t)pkt;
         ep1tx[n + 1] = (uint8_t)(pkt >> 8);
@@ -655,7 +669,7 @@ static void ep1_tx(void)
         n += 4u;
         so_r++;
     }
-    while (!sx_busy && so_r == so_w && mo_r != mo_w && n < 64u) {
+    while (!mq_mid && !sx_busy && so_r == so_w && mo_r != mo_w && n < 64u) {
 #else
     while (mo_r != mo_w && n < 64u) {
 #endif
@@ -670,6 +684,21 @@ static void ep1_tx(void)
         RING_PUBLISH();
         mo_r++;
     }
+#if FOMA_MIRROR
+    while (mq_r != mq_w && n < 64u && (mq_mid || (!sx_busy && so_r == so_w && mo_r == mo_w))) {
+        uint32_t pkt;
+        RING_PUBLISH();
+        pkt = mr_q[mq_r % MRQ];
+        ep1tx[n] = (uint8_t)pkt;
+        ep1tx[n + 1] = (uint8_t)(pkt >> 8);
+        ep1tx[n + 2] = (uint8_t)(pkt >> 16);
+        ep1tx[n + 3] = (uint8_t)(pkt >> 24);
+        n += 4u;
+        mq_mid = (pkt & 0x0Fu) == 4u;                   /* CIN 4: more of it to come */
+        RING_PUBLISH();
+        mq_r++;
+    }
+#endif
     if (!n)
         return;
     fm1_usb_ep_send(1, ep1tx, n);

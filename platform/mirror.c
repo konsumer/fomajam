@@ -4,11 +4,11 @@
  *   in:  F0 7D 'F' 'S' 00 F7, about once a second (01: and the whole screen again; 02: only the sound's name)
  *   out: F0 7D 'F' 'S' 01 row_lo row_hi col_lo col_hi {count c0-6 c7-13 c14-15}... F7, 70 bytes at most
  * Nothing runs unless a viewer asked in the last 3 s. Then the rows that changed go out from the framebuffer as
- * it is when they're sent, one message at a time, and only while no MIDI waits to go out: playing comes first.
+ * it is when they're sent, into usb.c's own ring for them, which goes out only between other MIDI: playing comes
+ * first.
  * Included by fm1.c after src/usb.c and common.c (usb.c's sysex_byte sets usb.mirror_hello). */
 #define MR_TIMEOUT 3000u
 #define MR_MSG 70u
-#define MR_AHEAD 8u /* SysEx packets still queued when the next message may go (notes wait at most ~1 ms) */
 
 static uint8_t mr_rows[SCREEN_H / 8]; /* rows changed since they last went out */
 static uint32_t mr_heard;             /* fm1_ms at the last hello */
@@ -42,7 +42,7 @@ static int mr_send(void) {
   const uint16_t *px = fb + mr_row * SCREEN_W;
   uint8_t m[MR_MSG];
   uint32_t k = 9, x = (uint32_t)mr_x, i;
-  if (SXQ - (so_w - so_r) < (MR_MSG + 2u) / 3u || so_w - so_r > MR_AHEAD || mo_w != mo_r || sx_busy || sx_open) {
+  if (MRQ - (mq_w - mq_r) < (MR_MSG + 2u) / 3u) {
     return 0;
   }
   m[0] = 0xF0, m[1] = 0x7D, m[2] = 'F', m[3] = 'S', m[4] = 1;
@@ -60,10 +60,10 @@ static int mr_send(void) {
   m[k++] = 0xF7;
   for (i = 0; i < k; i += 3u) { /* as ota_wire_send packs it: CIN 4 continues, 5/6/7 end */
     uint32_t n = k - i >= 3u ? 3u : k - i, cin = n == 3u && i + 3u < k ? 4u : 4u + n;
-    sx_out_q[so_w % SXQ] = cin | (uint32_t)m[i] << 8 | (n > 1u ? (uint32_t)m[i + 1] << 16 : 0u) |
+    mr_q[mq_w % MRQ] = cin | (uint32_t)m[i] << 8 | (n > 1u ? (uint32_t)m[i + 1] << 16 : 0u) |
                            (n > 2u ? (uint32_t)m[i + 2] << 24 : 0u);
     RING_PUBLISH();
-    so_w++;
+    mq_w++;
   }
   mr_x = (int)x;
   if (x >= SCREEN_W) {
