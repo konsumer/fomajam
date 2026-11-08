@@ -37,6 +37,17 @@ jobs:
         with:
           files: build/*.fwsc
           fail_on_unmatched_files: true
+      # GitHub's release list lags a new release by a few seconds, and mutant.cloud reads that list: wait for it
+      - if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          for i in $(seq 30); do
+            gh api "repos/${{ github.repository }}/releases?per_page=100" --jq '.[].tag_name' | grep -qx "$GITHUB_REF_NAME" && exit 0
+            sleep 5
+          done
+          echo "::error::$GITHUB_REF_NAME never showed up in the release list"
+          exit 1
+        env:
+          GH_TOKEN: ${{ github.token }}
       # tell mutant.cloud (a release made with github.token doesn't trigger release workflows)
       - uses: konsumer/mutantcloud@main
         if: startsWith(github.ref, 'refs/tags/v')
