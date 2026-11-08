@@ -1,0 +1,17 @@
+# Tell mutant.cloud about a release by hand (tagged builds do it themselves, in pages.yml)
+name: mutant.cloud
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag
+        required: true
+permissions:
+  id-token: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: konsumer/mutantcloud@main
+        with:
+          tag: ${{ inputs.tag }}
