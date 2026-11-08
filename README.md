@@ -13,6 +13,7 @@ A groovebox firmware for the M-VAVE FM-1 (and the [M-VAVE SMK-37](#m-vave-smk-37
 - 40 patterns of 16 steps, with accents, slides and ratchets
 - effects: delay, reverb and chorus sends, kick ducking, a master filter and 11 kinds of distortion
 - MIDI in over USB and the TRS jack, MIDI clock in and out, and color themes
+- Big Screen: the screen, big, on a computer or phone ([FM-1 Mirror](https://github.com/pfkellogg/fm1-mirror)) or on [fm1buddy](https://github.com/konsumer/fm1buddy), over USB. It only sends while one of them asks
 
 Try it in your browser, and install it on the FM-1 from Chrome or Edge: <https://konsumer.github.io/fomajam/>
 

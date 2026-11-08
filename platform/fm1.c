@@ -61,6 +61,7 @@ static volatile uint8_t in_audio;   /* the audio interrupt is running */
 #define HALF_FRAMES 256u /* I2S half buffer: 5.8 ms */
 #define HALF_WORDS (HALF_FRAMES * 2u)
 #define FELUCCA_OTA 1
+#define FOMA_MIRROR 1 /* Big Screen (src/mirror.c): the screen to a USB viewer that asks for it */
 #if FOMA_MIDI_CLOCK
 #define CLOCK_MUL ((uint64_t)44100u * 4294967296u / (1000000u * FM1_TICKS_PER_US)) /* TIMER4 ticks -> frames */
 #include "clock.c"
@@ -234,12 +235,14 @@ static void platform_frame(uint32_t cmd, const uint8_t *b, uint32_t n) {
 
 /* ---- the screen, the sound helpers (shared with the emulator) */
 #include "common.c"
+#include "mirror.c"
 
 static void screen_flush(void) {
   int y;
   if (fb_y0 >= fb_y1) {
     return;
   }
+  mirror_rows(fb_y0, fb_y1);
   for (y = fb_y0; y < fb_y1; y += 64) { /* strips of <= 30 KB per DMA */
     int h = fb_y1 - y > 64 ? 64 : fb_y1 - y;
     lcd_blit(0, (uint32_t)y, SCREEN_W, (uint32_t)h, fb + y * SCREEN_W);
@@ -652,6 +655,7 @@ static void platform_poll(void) {
   bt_loop();
 #endif
   ota_service();
+  mirror_service();
   if (usb.ota_req) {
     usb.ota_req = 0;
     if (flash_ok) {

@@ -65,6 +65,7 @@ static struct {
     uint8_t sx_len, sx_on;
     volatile uint8_t uboot_req;
     volatile uint8_t ota_req;    /* F0 22 24 35 7F F7: M-UPGRADE upgrade command (FELUCCA_OTA) */
+    volatile uint8_t mirror_hello; /* F0 7D 'F' 'S' n F7, a Big Screen viewer's hello (FOMA_MIRROR): 1 + n */
     uint8_t rx_pend;             /* EP1 OUT packet seen, not yet taken (the MIDI ring was too full) */
     uint32_t rx_held, rx_bad;    /* packets held back (NAK) for room, malformed events ignored */
 } usb;
@@ -80,6 +81,17 @@ static volatile uint8_t sx_ready, sx_collect, sx_busy;
 #define SXQ 64u
 static uint32_t sx_out_q[SXQ];
 static volatile uint32_t so_w, so_r;
+#endif
+
+#if FOMA_MIRROR
+/* Big Screen's SysEx packets (mirror.c fills it): they go after everything else, a whole message at a time, so a
+ * note waits at most for the end of one (24 packets, ~1.5 ms) */
+#define MRQ 512u
+static uint32_t mr_q[MRQ];
+static volatile uint32_t mq_w, mq_r;
+static uint8_t mq_mid; /* inside a message: nothing else until its end */
+#else
+#define mq_mid 0
 #endif
 
 /* MIDI rings: 4-byte USB-MIDI event packets. In: the cable nibble is where it came from (0 USB, 1 the TRS jack) */
@@ -456,6 +468,15 @@ static void sysex_byte(uint8_t b)
         usb.sysex[usb.sx_len++] = b;
     if (b == 0xF7) {
         uint32_t i, ok = usb.sx_len == 6u;
+#if FOMA_MIRROR
+        if (ok && usb.sysex[1] == 0x7D && usb.sysex[2] == 'F' && usb.sysex[3] == 'S') {
+            if (usb.sysex[4] < 3u)
+                usb.mirror_hello = (uint8_t)(usb.sysex[4] + 1u);   /* mirror.c */
+            sx_collect = 0;
+            usb.sx_on = 0;
+            return;
+        }
+#endif
         for (i = 0; ok && i < 6u; i++)
             ok = usb.sysex[i] == UBOOT_KEY[i];
         if (ok)
@@ -622,7 +643,10 @@ static void ota_frame_done(void)
 static void ep1_tx(void)
 {
     uint32_t csr, n = 0;
-#if FELUCCA_OTA
+#if FELUCCA_OTA && FOMA_MIRROR
+    if (mo_w == mo_r && so_w == so_r && mq_w == mq_r)
+        return;
+#elif FELUCCA_OTA
     if (mo_w == mo_r && so_w == so_r)
         return;
 #else
@@ -636,7 +660,7 @@ static void ep1_tx(void)
     if (csr & 0x80u)
         sie_wr(S_TXCSR1, csr & ~0x80u);
 #if FELUCCA_OTA
-    while (so_r != so_w && n < 64u) {                   /* SysEx first, never split by notes */
+    while (!mq_mid && so_r != so_w && n < 64u) {        /* SysEx first, never split by notes */
         uint32_t pkt = sx_out_q[so_r % SXQ];
         ep1tx[n] = (uint8_t)pkt;
         ep1tx[n + 1] = (uint8_t)(pkt >> 8);
@@ -645,7 +669,7 @@ static void ep1_tx(void)
         n += 4u;
         so_r++;
     }
-    while (!sx_busy && so_r == so_w && mo_r != mo_w && n < 64u) {
+    while (!mq_mid && !sx_busy && so_r == so_w && mo_r != mo_w && n < 64u) {
 #else
     while (mo_r != mo_w && n < 64u) {
 #endif
@@ -660,6 +684,21 @@ static void ep1_tx(void)
         RING_PUBLISH();
         mo_r++;
     }
+#if FOMA_MIRROR
+    while (mq_r != mq_w && n < 64u && (mq_mid || (!sx_busy && so_r == so_w && mo_r == mo_w))) {
+        uint32_t pkt;
+        RING_PUBLISH();
+        pkt = mr_q[mq_r % MRQ];
+        ep1tx[n] = (uint8_t)pkt;
+        ep1tx[n + 1] = (uint8_t)(pkt >> 8);
+        ep1tx[n + 2] = (uint8_t)(pkt >> 16);
+        ep1tx[n + 3] = (uint8_t)(pkt >> 24);
+        n += 4u;
+        mq_mid = (pkt & 0x0Fu) == 4u;                   /* CIN 4: more of it to come */
+        RING_PUBLISH();
+        mq_r++;
+    }
+#endif
     if (!n)
         return;
     fm1_usb_ep_send(1, ep1tx, n);
