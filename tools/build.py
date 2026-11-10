@@ -98,7 +98,7 @@ SMK_MODELS = [("SMK-37 Pro", ""), ("SMK-37 Elite", "-elite"), ("MKE-P37", "-mke"
 BOARDS = ("fm1", "fm1bt", "smk37")
 GEN_BT = OUT / "gen-bt"  # the fm1bt build's generated headers, ahead of build/gen: fewer ROM machines
 BT_ROM_BUDGET = roms.BUDGET - 47 * 1024  # the Bluetooth stack's room
-BT_ROM_SECONDS = 0.77  # and its sounds a little shorter than roms.MAX_SECONDS, so the eight machines still fit
+BT_ROM_SECONDS = 0.76  # and its sounds a little shorter than roms.MAX_SECONDS, so the eight machines still fit (with Big Screen 2)
 
 
 def targets(cfg):
