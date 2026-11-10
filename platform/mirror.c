@@ -1,113 +1,56 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* Big Screen: the screen over USB MIDI, for a viewer (fm1buddy, FM-1 Mirror), in pfkellogg's screen_mirror
- * protocol (github.com/pfkellogg/fm1_open, screen_mirror/README.md):
- *   in:  F0 7D 'F' 'S' 00 F7, about once a second (01: and the whole screen again; 02: only the sound's name)
- *   out: F0 7D 'F' 'S' 01 row_lo row_hi col_lo col_hi {count c0-6 c7-13 c14-15}... F7, 70 bytes at most
- * Nothing runs unless a viewer asked in the last 3 s. Then the rows that changed go out from the framebuffer as
- * it is when they're sent, into usb.c's own ring for them, which goes out only between other MIDI: playing comes
- * first.
- * Included by fm1.c after src/usb.c and common.c (usb.c's sysex_byte sets usb.mirror_hello). */
-#define MR_TIMEOUT 3000u
-#define MR_MSG 70u
+/* Big Screen: the screen over USB MIDI, for a viewer (fm1buddy, FM-1 Mirror), in bigscreen.h (foma's bigscreen/:
+ * the protocol and both ends of it). Version 2, what a viewer asks for first (F0 7D 'B' 'S' 00 ...): only the 16 x 16
+ * tiles that changed, compressed. Version 1 for viewers that only know it: pfkellogg's screen_mirror
+ * (github.com/pfkellogg/fm1_open, screen_mirror/README.md), F0 7D 'F' 'S' 00 F7.
+ * Nothing runs unless a viewer said hello in the last 3 s. Then what changed goes out from the framebuffer as it is
+ * when it's sent, into usb.c's own ring for it, which goes out only between other MIDI: playing comes first.
+ * Included by fm1.c after src/usb.c and common.c (usb.c's sysex_byte keeps the hello in usb.mirror_msg). */
+#define BS_MAX_TILES ((SCREEN_W / 16) * (SCREEN_H / 16))
+#define BS_MAX_W SCREEN_W
+#define BS_MSG 128 /* (a note waits for the end of one: 43 packets, ~1.3 ms) */
+#define BS_NO_VIEWER
+#define BS_SWAPPED 1 /* (fb is stored byte-swapped for the panel) */
+#define BIGSCREEN_IMPLEMENTATION
+#include "bigscreen.h"
 
-static uint8_t mr_rows[SCREEN_H / 8]; /* rows changed since they last went out */
-static uint32_t mr_heard;             /* fm1_ms at the last hello */
-static uint8_t mr_live;
-static int mr_row = -1, mr_x;      /* the row going out, and where in it */
-static int mr_last = SCREEN_H - 1; /* the last row that went out: the next search starts after it */
+static bs_dev mr;
 
 /* screen_flush: rows y0..y1 (exclusive) changed */
 static void mirror_rows(int y0, int y1) {
-  if (!mr_live) {
-    return;
-  }
-  for (; y0 < y1; y0++) {
-    mr_rows[y0 >> 3] |= (uint8_t)(1u << (y0 & 7));
-  }
-}
-
-static int mr_next(void) {
-  for (int i = 1; i <= SCREEN_H; i++) {
-    int y = (mr_last + i) % SCREEN_H;
-    if (mr_rows[y >> 3] & 1u << (y & 7)) {
-      mr_rows[y >> 3] &= (uint8_t) ~(1u << (y & 7));
-      return y;
-    }
-  }
-  return -1;
-}
-
-/* one message of the row going out, from mr_x: false if there's no room for it now */
-static int mr_send(void) {
-  const uint16_t *px = fb + mr_row * SCREEN_W;
-  uint8_t m[MR_MSG];
-  uint32_t k = 9, x = (uint32_t)mr_x, i;
-  if (MRQ - (mq_w - mq_r) < (MR_MSG + 2u) / 3u) {
-    return 0;
-  }
-  m[0] = 0xF0, m[1] = 0x7D, m[2] = 'F', m[3] = 'S', m[4] = 1;
-  m[5] = (uint8_t)(mr_row & 127), m[6] = (uint8_t)(mr_row >> 7);
-  m[7] = (uint8_t)(x & 127u), m[8] = (uint8_t)(x >> 7);
-  while (x < SCREEN_W && k + 5u <= MR_MSG) {
-    uint32_t run = 1, c = fb_swap(px[x]); /* (stored byte-swapped for the panel) */
-    while (x + run < SCREEN_W && run < 127u && px[x + run] == px[x]) {
-      run++;
-    }
-    m[k] = (uint8_t)run, m[k + 1] = (uint8_t)(c & 127u), m[k + 2] = (uint8_t)(c >> 7 & 127u), m[k + 3] = (uint8_t)(c >> 14);
-    k += 4u;
-    x += run;
-  }
-  m[k++] = 0xF7;
-  for (i = 0; i < k; i += 3u) { /* as ota_wire_send packs it: CIN 4 continues, 5/6/7 end */
-    uint32_t n = k - i >= 3u ? 3u : k - i, cin = n == 3u && i + 3u < k ? 4u : 4u + n;
-    mr_q[mq_w % MRQ] = cin | (uint32_t)m[i] << 8 | (n > 1u ? (uint32_t)m[i + 1] << 16 : 0u) |
-                           (n > 2u ? (uint32_t)m[i + 2] << 24 : 0u);
-    RING_PUBLISH();
-    mq_w++;
-  }
-  mr_x = (int)x;
-  if (x >= SCREEN_W) {
-    mr_last = mr_row;
-    mr_row = -1;
-  }
-  return 1;
+  bs_dev_changed(&mr, 0, y0, SCREEN_W, y1);
 }
 
 /* the main loop: a hello, and what's waiting to go out */
 static void mirror_service(void) {
-  uint8_t h = usb.mirror_hello;
-  if (h) {
-    usb.mirror_hello = 0;
-    if (h != 3u) { /* (02: the sound's name only, which this doesn't send) */
-      if (!mr_live || h == 2u) {
-        for (uint32_t i = 0; i < sizeof mr_rows; i++) {
-          mr_rows[i] = 0xFF; /* a new viewer, or it asked: all of it */
-        }
-      }
-      mr_live = 1;
-      mr_heard = fm1_ms;
-    }
+  const uint8_t* m;
+  uint32_t n, i;
+  if (!mr.fb) {
+    bs_dev_init(&mr, fb, SCREEN_W, SCREEN_H, SCREEN_W, 1); /* (stored byte-swapped for the panel) */
   }
-  if (!mr_live) {
+  if (usb.mirror_len) {
+    uint8_t h[sizeof usb.mirror_msg];
+    n = usb.mirror_len;
+    for (i = 0; i < n; i++) {
+      h[i] = usb.mirror_msg[i];
+    }
+    usb.mirror_len = 0;
+    bs_dev_sysex(&mr, h, n, fm1_ms);
+  }
+  if (!bs_dev_active(&mr)) {
     return;
   }
-  if (fm1_ms - mr_heard >= MR_TIMEOUT || !usb.config) {
-    mr_live = 0;
-    mr_row = -1;
-    for (uint32_t i = 0; i < sizeof mr_rows; i++) {
-      mr_rows[i] = 0;
-    }
+  if (!usb.config) {
+    bs_dev_init(&mr, fb, SCREEN_W, SCREEN_H, SCREEN_W, 1); /* (unplugged: nobody's looking) */
     return;
   }
-  for (;;) {
-    if (mr_row < 0) {
-      if ((mr_row = mr_next()) < 0) {
-        return;
-      }
-      mr_x = 0;
-    }
-    if (!mr_send()) {
-      return;
+  while (MRQ - (mq_w - mq_r) >= (BS_MSG + 2u) / 3u && (n = bs_dev_next(&mr, fm1_ms, &m))) {
+    for (i = 0; i < n; i += 3u) { /* as ota_wire_send packs it: CIN 4 continues, 5/6/7 end */
+      uint32_t k = n - i >= 3u ? 3u : n - i, cin = k == 3u && i + 3u < n ? 4u : 4u + k;
+      mr_q[mq_w % MRQ] = cin | (uint32_t)m[i] << 8 | (k > 1u ? (uint32_t)m[i + 1] << 16 : 0u) |
+                         (k > 2u ? (uint32_t)m[i + 2] << 24 : 0u);
+      RING_PUBLISH();
+      mq_w++;
     }
   }
 }

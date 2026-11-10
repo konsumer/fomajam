@@ -21,7 +21,7 @@ from pathlib import Path
 REPO = "https://raw.githubusercontent.com/geikha/tidal-drum-machines"
 REF = "6577395a4d05031728ced2ec3e5637fa89d8be48"
 RATE = 44100
-MAX_SECONDS = 0.79  # (0.8 left no room for Big Screen, platform/mirror.c, in the FM-1 build)
+MAX_SECONDS = 0.78  # (0.8 left no room for Big Screen, platform/mirror.c, in the FM-1 build; 0.79 none for its version 2)
 FADE_SECONDS = 0.02
 HALVE_BELOW = 1e-3  # halve a recording's rate when less than this share of its energy is above a quarter of its rate
 

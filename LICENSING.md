@@ -12,6 +12,9 @@ receives a firmware built from this project is also entitled to its source code.
 | `platform/fm1.h`, `platform/common.c`, `platform/clock.c`, `platform/web.c`, `web/` (the page and the emulator), `fm1`                                                                                      | [foma](https://github.com/konsumer/foma)                                                                                                                                                                                                                                                                                                              |
 | `src/`, `tools/drums.py`, `tools/roms.py`, `tools/samples.py`, `tools/tables.py`, `test/`, `firmware.json`, and FOMAJAM's changes to the files above                                                        | FOMAJAM's authors                                                                                                                                                                                                                                                                                                                                     |
 
+`platform/bigscreen.h` (Big Screen) is [foma](https://github.com/konsumer/foma)'s `bigscreen/bigscreen.h`, MIT (the notice
+is in the file).
+
 The SMK-37 board support (`platform/hal/smk_input.h` and the `FOMA_SMK37` parts of `platform/`, the SMK-37
 layout in `tools/fm1pkg_make.py`) is ported from the Felucca SMK-37 layer, Copyright (C) 2026 M. Geisler
 ([genkigenki](https://github.com/genkigenki/Felucca/tree/smk37), GPL-3.0-only), with the hardware map of the

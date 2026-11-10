@@ -65,7 +65,8 @@ static struct {
     uint8_t sx_len, sx_on;
     volatile uint8_t uboot_req;
     volatile uint8_t ota_req;    /* F0 22 24 35 7F F7: M-UPGRADE upgrade command (FELUCCA_OTA) */
-    volatile uint8_t mirror_hello; /* F0 7D 'F' 'S' n F7, a Big Screen viewer's hello (FOMA_MIRROR): 1 + n */
+    uint8_t mirror_msg[8];       /* a Big Screen viewer's hello (FOMA_MIRROR): F0 7D 'B'|'F' 'S' ... F7 */
+    volatile uint8_t mirror_len; /* its length, 0 when mirror.c has it */
     uint8_t rx_pend;             /* EP1 OUT packet seen, not yet taken (the MIDI ring was too full) */
     uint32_t rx_held, rx_bad;    /* packets held back (NAK) for room, malformed events ignored */
 } usb;
@@ -85,8 +86,8 @@ static volatile uint32_t so_w, so_r;
 
 #if FOMA_MIRROR
 /* Big Screen's SysEx packets (mirror.c fills it): they go after everything else, a whole message at a time, so a
- * note waits at most for the end of one (24 packets, ~1.5 ms) */
-#define MRQ 512u
+ * note waits at most for the end of one (43 packets, ~1.3 ms); MIDI clock (realtime) goes between its packets */
+#define MRQ 1024u
 static uint32_t mr_q[MRQ];
 static volatile uint32_t mq_w, mq_r;
 static uint8_t mq_mid; /* inside a message: nothing else until its end */
@@ -469,9 +470,13 @@ static void sysex_byte(uint8_t b)
     if (b == 0xF7) {
         uint32_t i, ok = usb.sx_len == 6u;
 #if FOMA_MIRROR
-        if (ok && usb.sysex[1] == 0x7D && usb.sysex[2] == 'F' && usb.sysex[3] == 'S') {
-            if (usb.sysex[4] < 3u)
-                usb.mirror_hello = (uint8_t)(usb.sysex[4] + 1u);   /* mirror.c */
+        if (usb.sx_len <= sizeof usb.mirror_msg && usb.sx_len >= 6u && usb.sysex[1] == 0x7D && usb.sysex[3] == 'S' &&
+            (usb.sysex[2] == 'F' || usb.sysex[2] == 'B')) {
+            if (!usb.mirror_len) {                      /* mirror.c */
+                for (i = 0; i < usb.sx_len; i++)
+                    usb.mirror_msg[i] = usb.sysex[i];
+                usb.mirror_len = usb.sx_len;
+            }
             sx_collect = 0;
             usb.sx_on = 0;
             return;
@@ -640,6 +645,18 @@ static void ota_frame_done(void)
 }
 #endif
 
+#if FOMA_MIRROR
+static int mo_realtime(void)                            /* the next MIDI out is realtime (clock): it may go inside */
+{                                                       /* Big Screen's SysEx */
+    uint32_t pkt;
+    RING_PUBLISH();
+    pkt = midi_out_q[mo_r % MQ];
+    return (pkt & 0x0Fu) == 0x0Fu && (pkt >> 8 & 0xFFu) >= 0xF8u;
+}
+#else
+#define mo_realtime() 0
+#endif
+
 static void ep1_tx(void)
 {
     uint32_t csr, n = 0;
@@ -669,7 +686,7 @@ static void ep1_tx(void)
         n += 4u;
         so_r++;
     }
-    while (!mq_mid && !sx_busy && so_r == so_w && mo_r != mo_w && n < 64u) {
+    while (!sx_busy && so_r == so_w && mo_r != mo_w && n < 64u && (!mq_mid || mo_realtime())) {
 #else
     while (mo_r != mo_w && n < 64u) {
 #endif
